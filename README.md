@@ -74,4 +74,4 @@ python src/predict.py "path/to/image.jpg" --iraq
 
 ## 📚 Academic & Engineering Guide
 For an in-depth explanation of the models, the `std::bad_alloc` memory leak solution, how we resolved the geographic bias, and more key code snippets, please refer to the extended academic guide:
-👉 **[Read the Academic & Engineering Guide](presentation_guide_extended.md)**
+**[Read the Academic & Engineering Guide](presentation_guide_extended.md)**
