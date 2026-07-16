@@ -1,0 +1,6 @@
+torch>=2.0.0
+numpy
+pytest
+open_clip_torch
+datasets
+faiss-cpu
