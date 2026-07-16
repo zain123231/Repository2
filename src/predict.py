@@ -149,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument("image", type=str, help="Path to the input image (e.g., my_photo.jpg)")
     parser.add_argument("--top_k", type=int, default=3, help="Number of top predictions to show")
     parser.add_argument("--iraq", action="store_true", help="Use the Iraq-specific dataset instead of the global one")
+    parser.add_argument("--forensic", action="store_true", help="Enable EXIF metadata extraction")
     args = parser.parse_args()
     
     predict_image(args.image, args.top_k, args.iraq)

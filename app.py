@@ -171,6 +171,9 @@ def get_exif_location(image):
         return None
 
 def main():
+    import sys
+    use_forensic = "--forensic" in sys.argv
+    
     st.title("🌍 AI Geo-Locator")
     st.markdown("Upload a photo and the AI will predict its geographic location based on visual features.")
     
@@ -192,8 +195,10 @@ def main():
         st.image(image, caption="Uploaded Image", use_container_width=True)
         
         if st.button("📍 Predict Location", type="primary"):
-            # Check for EXIF data first
-            exif_loc = get_exif_location(image)
+            # Check for EXIF data first (Only if --forensic flag is enabled)
+            exif_loc = None
+            if use_forensic:
+                exif_loc = get_exif_location(image)
             
             if exif_loc:
                 st.success("✅ Exact Location Found from Image Metadata (EXIF)!")
