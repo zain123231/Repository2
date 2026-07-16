@@ -124,14 +124,211 @@ The developed framework represents a highly sophisticated, multi-modal approach 
 
 ---
 
-## 9. References and Bibliography
-1. **Radford, A., et al. (2021).** "Learning Transferable Visual Models From Natural Language Supervision" (CLIP). *International Conference on Machine Learning (ICML)*.
-2. **Vivanco, V., et al. (2024).** "GeoCLIP: Clip-Inspired Alignment between Locations and Images for Effective Worldwide Geo-localization". *Advances in Neural Information Processing Systems (NeurIPS)*.
-3. **Haas, L., et al. (2023).** "StreetCLIP: Robust Image Geolocalization using Contrastive Learning". *IEEE Conference on Computer Vision and Pattern Recognition (CVPR)*.
-4. **Johnson, J., Douze, M., & Jégou, H. (2019).** "Billion-scale similarity search with GPUs" (FAISS). *IEEE Transactions on Big Data*.
-5. **Jaided AI. (2020).** *EasyOCR: Ready-to-use OCR with 80+ supported languages*. Available at: https://github.com/JaidedAI/EasyOCR.
-6. **Paszke, A., et al. (2019).** "PyTorch: An Imperative Style, High-Performance Deep Learning Library". *Advances in Neural Information Processing Systems*.
-7. **Folium Contributors. (2020).** *Folium: Python Data. Leaflet.js Maps.* Available at: https://python-visualization.github.io/folium/.
+## 9. Error Analysis
+
+To ensure scientific rigor, this section documents the expected failure cases of the geolocalization model. The system relies heavily on visual cues and may exhibit reduced confidence or geographic dispersion in the following scenarios:
+
+- **Night images:** Lack of illumination obscures distinct architectural features and natural landmarks, leading to degraded feature extraction.
+- **Heavy rain:** Extreme weather conditions alter the visual texture of landscapes, potentially masking geographical indicators and causing distribution shifts from the training data.
+- **Snow:** Snow cover obscures ground-level features, vegetation, and road markings, leading to high ambiguity.
+- **Fog:** Significant reduction in visibility limits the model's ability to capture global contextual relationships and distant landmarks.
+- **Indoor scenes:** Devoid of outdoor environmental cues (e.g., vegetation, skyline, street signs), indoor imagery poses a severe challenge, often resulting in high uncertainty.
+- **Very old images:** Historical photographs may feature obsolete architectural styles or grayscale formats, which differ from the contemporary, color-rich datasets used during pretraining.
+- **Satellite ambiguity:** Features visible from ground level might not correspond seamlessly to satellite-derived embeddings, causing projection errors.
+- **Visually similar cities:** Urban environments with shared architectural paradigms or identical vegetation profiles (e.g., different cities in the same climatic zone) can lead to overlapping embedding representations.
+- **Low resolution:** Pixelation destroys high-frequency details essential for distinguishing localized structural features.
+- **Motion blur:** Fast-moving camera captures obscure structural edges and textures, corrupting the feature maps.
+- **Occlusion:** Obstruction of the primary subject or background by foreground objects (e.g., vehicles, people) prevents the Image Encoder from extracting comprehensive spatial context.
+
+---
+
+## 10. Limitations
+
+The current framework operates within realistic boundaries that must be acknowledged:
+
+- **Dependency on Pretraining Data Distribution:** The system's global understanding is constrained by the geographical distribution of the pretraining dataset. Regions underrepresented during training inherently exhibit lower localization accuracy and higher variance.
+- **Temporal Discrepancy:** The model does not account for temporal changes in landscapes, such as new construction, deforestation, or seasonal shifts. It predicts based on the static visual state present during the pretraining era.
+- **Resolution of Geographic Embeddings:** While the system excels at regional clustering, predicting the precise sub-meter GPS coordinate in highly ambiguous environments (e.g., open oceans, featureless deserts, or dense forests) remains fundamentally unreliable.
+- **Hardware Constraints for Global Inference:** Deploying the full dual-encoder architecture for simultaneous global-scale, real-time tracking requires substantial GPU resources and memory bandwidth.
+
+---
+
+## 11. Future Work
+
+To further enhance the robustness and accuracy of the system, the following technically realistic improvements are proposed for future iterations:
+
+- **Satellite imagery fusion:** Integrating top-down satellite data with ground-level imagery to create a more comprehensive spatial embedding that bridges multiple perspectives.
+- **Vision-Language Models:** Leveraging advanced VLMs to extract nuanced textual descriptions of scenes to guide and refine the geographic projection.
+- **Multimodal Retrieval:** Combining visual, temporal, textual, and semantic data into a unified, high-dimensional retrieval pipeline.
+- **Continual Learning:** Implementing dynamic strategies to update the model with new visual data over time without suffering from catastrophic forgetting of previously learned regions.
+- **3D GIS integration:** Mapping 2D image embeddings onto 3D topographic models for elevation-aware geolocalization.
+- **Drone imagery:** Expanding the dataset and embedding space to support mid-altitude aerial perspectives, bridging the gap between ground and satellite views.
+- **Video geolocation:** Developing temporal models to track and geolocate continuous video streams by analyzing frame-to-frame visual shifts and trajectory constraints.
+- **LLM-assisted reasoning:** Utilizing Large Language Models to contextually reason about the predicted location candidates based on extracted visual concepts and logical geographical constraints.
+
+---
+
+## 12. Repository Documentation
+
+The repository is logically structured to separate data processing, model training, and evaluation workflows.
+
+- **`src/`**
+  - **Purpose:** Contains the core source code for the neural network, data loaders, training loops, indexing, and evaluation scripts.
+  - **Dependencies:** `torch`, `pandas`, `numpy`, `folium` ([PLACEHOLDER] additional dependencies as required by full implementation).
+  - **Workflow:** Houses all functional scripts including model definition, training (`train.py`), and metric evaluation (`metrics.py`).
+  - **Execution Order:** `download_dataset.py` -> `dataset.py` -> `loss.py` -> `train.py` -> `predict.py`.
+
+- **`data/`**
+  - **Purpose:** The central repository for all raw and processed datasets, including CSV files, indices, text files, and testing images.
+  - **Dependencies:** None directly (accessed via `src/` scripts).
+  - **Workflow:** Acts as the target directory for data download scripts and the source directory for data loaders.
+  - **Execution Order:** Must be populated prior to any training or inference operations.
+
+- **`tests/`**
+  - **Purpose:** Contains unit tests to validate the mathematical integrity of the codebase, specifically focusing on metrics and utility functions.
+  - **Dependencies:** `pytest`.
+  - **Workflow:** Executed during the CI/CD pipeline to ensure code changes do not break existing functionality.
+  - **Execution Order:** Run independently after modifications to the `src/` directory.
+
+- **`checkpoints/`**
+  - **Purpose:** Stores the saved model weights (`.pth` files) generated during the training process.
+  - **Dependencies:** `torch` (for loading state dicts).
+  - **Workflow:** Written to by `train.py` and read from by inference and evaluation scripts.
+  - **Execution Order:** Generated dynamically during training; required for evaluation and prediction.
+
+- **`geo-clip/`**
+  - **Purpose:** Contains the submodule or specific configuration files related directly to the core architecture components.
+  - **Dependencies:** Core dependencies of the project.
+  - **Workflow:** Imported and utilized by scripts in the `src/` directory to instantiate the models.
+  - **Execution Order:** Sourced during model initialization.
+
+---
+
+## 13. Pipeline Diagrams
+
+```mermaid
+graph TD
+    %% Training Pipeline
+    subgraph Training Pipeline
+        A[Image Dataset] --> B[Image Encoder]
+        C[GPS Coordinates] --> D[Location Encoder]
+        B --> E[Image Embedding]
+        D --> F[Location Embedding]
+        E --> G[Loss Calculation]
+        F --> G
+        G --> H[Backpropagation]
+    end
+```
+
+```mermaid
+graph TD
+    %% Inference Pipeline
+    subgraph Inference Pipeline
+        I[Input Image] --> J[Image Encoder]
+        J --> K[Image Embedding]
+        K --> L[Similarity Search]
+        M[Pre-computed Location Embeddings] --> L
+        L --> N[Top-K Geographic Predictions]
+    end
+```
+
+```mermaid
+graph TD
+    %% Dataset Pipeline
+    subgraph Dataset Pipeline
+        O[Raw Data Source] --> P[Data Cleaning]
+        P --> Q[Coordinate Extraction]
+        Q --> R[Format Conversion CSV/TSV]
+        R --> S[Dataset Loader]
+    end
+```
+
+```mermaid
+graph TD
+    %% Embedding Pipeline
+    subgraph Embedding Pipeline
+        T[Input Data Image/Location] --> U[Respective Encoder]
+        U --> V[Projection Head MLP]
+        V --> W[L2 Normalization]
+        W --> X[Shared Embedding Space]
+    end
+```
+
+```mermaid
+graph TD
+    %% FAISS Search Pipeline
+    subgraph FAISS Search Pipeline
+        Y[Query Embedding] --> Z[FAISS Index IVFFlat]
+        Z --> AA[Inner Product Calculation]
+        AA --> AB[Retrieve Top-K Candidates]
+    end
+```
+
+```mermaid
+graph TD
+    %% Complete System Architecture
+    subgraph Complete System Architecture
+        AC[Client UI] --> AD[Image Preprocessing]
+        AD --> AE[Image Encoder]
+        AE --> AF[Search Pipeline]
+        AF --> AG[Geographic Coordinate Output]
+        AG --> AH[Map Visualization]
+        AH --> AC
+    end
+```
+
+---
+
+## 14. Mathematical Formulation
+
+### Contrastive Learning & InfoNCE Loss
+The system optimizes the embedding space using the InfoNCE loss to maximize the similarity of positive pairs. For an image embedding $I$ and location embedding $L$:
+$$ \mathcal{L}_{InfoNCE} = - \frac{1}{N} \sum_{i=1}^{N} \log \frac{\exp(s \cdot \cos(I_i, L_i))}{\sum_{j=1}^{N} \exp(s \cdot \cos(I_i, L_j))} $$
+Where $s$ is the learnable temperature parameter and $N$ is the batch size.
+
+### Geographic Loss & Haversine Distance
+To enforce physical spatial awareness, a geographic loss utilizing the Haversine formula is applied:
+$$ d = 2R \cdot \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right) + \cos(\phi_1)\cos(\phi_2)\sin^2\left(\frac{\Delta\lambda}{2}\right)}\right) $$
+Where $R \approx 6371.0 \text{ km}$ is the Earth's radius, $\phi$ is latitude, and $\lambda$ is longitude in radians.
+
+### Embedding Similarity & Cosine Similarity
+The distance between two vectors $u$ and $v$ in the shared embedding space is measured via Cosine Similarity:
+$$ \text{Cosine Similarity}(u, v) = \frac{u \cdot v}{\|u\| \|v\|} $$
+
+### Coordinate Encoding
+Raw GPS coordinates $(lat, lon)$ are projected into the continuous embedding space via a multi-layer perceptron:
+$$ L_{embedding} = \text{MLP}(\text{concat}(\sin(lat), \cos(lat), \sin(lon), \cos(lon))) $$
+*(Note: [PLACEHOLDER] Formulation acts as an approximation for exact harmonic encoding implementations until empirical results finalize the optimal layer depth.)*
+
+---
+
+## 15. References
+
+[1] V. Vivanco et al., "GeoCLIP: Clip-Inspired Alignment between Locations and Images for Effective Worldwide Geo-localization," in *Advances in Neural Information Processing Systems (NeurIPS)*, 2024.
+
+[2] A. Radford et al., "Learning Transferable Visual Models From Natural Language Supervision," in *International Conference on Machine Learning (ICML)*, 2021.
+
+[3] A. Dosovitskiy et al., "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale," in *International Conference on Learning Representations (ICLR)*, 2021.
+
+[4] A. v. d. Oord, Y. Li, and O. Vinyals, "Representation Learning with Contrastive Predictive Coding," *arXiv preprint arXiv:1807.03748*, 2018.
+
+[5] J. Johnson, M. Douze, and H. Jégou, "Billion-scale similarity search with GPUs," *IEEE Transactions on Big Data*, vol. 7, no. 3, pp. 535-547, 2019.
+
+[6] "GeoNames Geographical Database," GeoNames. [Online]. Available: http://www.geonames.org/.
+
+[7] R. W. Sinnott, "Virtues of the Haversine," *Sky and Telescope*, vol. 68, no. 2, p. 159, 1984.
+
+[8] G. Ilharco et al., "OpenCLIP," Zenodo, 2021. [Online]. Available: https://doi.org/10.5281/zenodo.5143773.
+
+[9] T. Chen, S. Kornblith, M. Norouzi, and G. Hinton, "A Simple Framework for Contrastive Learning of Visual Representations," in *International Conference on Machine Learning (ICML)*, 2020.
+
+[10] L. Haas et al., "StreetCLIP: Robust Image Geolocalization using Contrastive Learning," in *IEEE Conference on Computer Vision and Pattern Recognition (CVPR)*, 2023.
+
+[11] Jaided AI, "EasyOCR: Ready-to-use OCR with 80+ supported languages," 2020. [Online]. Available: https://github.com/JaidedAI/EasyOCR.
+
+[12] A. Paszke et al., "PyTorch: An Imperative Style, High-Performance Deep Learning Library," in *Advances in Neural Information Processing Systems*, 2019.
+
+[13] Folium Contributors, "Folium: Python Data. Leaflet.js Maps," 2020. [Online]. Available: https://python-visualization.github.io/folium/.
 
 ---
 *Document automatically generated for academic submission standards. Project: GeoCLIP AI Locator.*
