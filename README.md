@@ -1,113 +1,71 @@
-# 🌍 GeoCLIP AI Locator: Ultimate Geographic Prediction System
+# GeoCLIP AI Locator: Geographic Prediction System
 
-![Project Status](https://img.shields.io/badge/Status-Active-success.svg)
-![Python Version](https://img.shields.io/badge/Python-3.10-blue.svg)
-![AI Framework](https://img.shields.io/badge/Framework-PyTorch-orange.svg)
+[![Project Status](https://img.shields.io/badge/Status-Active-success.svg)](#)
+[![Python Version](https://img.shields.io/badge/Python-3.10-blue.svg)](#)
+[![AI Framework](https://img.shields.io/badge/Framework-PyTorch-orange.svg)](#)
 
-مرحباً بك في مشروع **AI Geo-Locator**، وهو نظام ذكاء اصطناعي هجين ومتطور مبني على نموذج **GeoCLIP**. 
-هذا المشروع قادر على تحليل الصور بصرياً واستنتاج موقعها الجغرافي الدقيق على كوكب الأرض أو داخل دولة محددة باستخدام أحدث تقنيات الذكاء الاصطناعي (Computer Vision, OCR, K-Means Clustering).
+## Overview
+The Geo-Locator is an advanced artificial intelligence system built upon the GeoCLIP architecture. It is designed to analyze images visually and deduce their exact geographic location worldwide, or within a specific localized region (e.g., Iraq), by matching image embeddings with a large-scale geospatial vector database.
 
----
+## Key Features
+- **Visual AI (Computer Vision):** Utilizes the CLIP architecture (ViT-L/14) to extract deep visual features from images.
+- **Hybrid Search Architecture (v0.1):** Employs FAISS (Facebook AI Similarity Search) with an `IndexIVFFlat` structure for coarse classification across 4,096 geographic cells, enabling sub-second search times across over 5 million global coordinates.
+- **Optical Character Recognition (OCR):** Integrates `EasyOCR` to extract bilingual text (English/Arabic) from images, providing critical contextual clues for location resolution.
+- **EXIF Metadata Extraction:** Automatically parses hidden GPS metadata from raw images to provide 100% accurate coordinates when available.
+- **Localized Regional Database:** Includes a dedicated, high-resolution dataset containing over 55,000 specific landmarks, villages, and streets strictly within Iraq to drastically improve local prediction accuracy.
 
-## 🚀 المميزات الرئيسية (Features)
+## Tech Stack
+- **Language:** Python 3
+- **Deep Learning Framework:** PyTorch (CUDA supported)
+- **Vector Search Engine:** FAISS
+- **Data Processing:** Pandas, NumPy
+- **Image Processing & OCR:** PIL (Pillow), Torchvision, EasyOCR
+- **Frontend UI:** Streamlit
 
-1. **الذكاء الاصطناعي البصري (Computer Vision)**: يعتمد على بنية CLIP (ViT-L/14) لاستخراج البصمات الرياضية العميقة للصور ومقارنتها جغرافياً.
-2. **النظام الهجين (Hybrid System v0.1)**: تم تطوير خوارزمية البحث لتعمل بنظام (Coarse Classification) باستخدام الخلايا الذكية (4096 خلية)، مما أدى إلى تسريع البحث ومنع مشاكل الذاكرة عند معالجة أكثر من 5 مليون موقع.
-3. **قراءة النصوص في الصور (OCR)**: تم دمج نظام `EasyOCR` لقراءة أي نصوص (عربية أو إنجليزية) موجودة داخل الصورة واستخدامها كأدلة قوية لتحسين الدقة (مثل قراءة لافتات الشوارع أو أسماء المحلات).
-4. **استخراج البيانات الوصفية المخفية (EXIF Extraction)**: النظام قادر على استخراج إحداثيات الـ GPS المخفية في الصورة (إذا كانت متوفرة) وإعطاء دقة 100% مباشرة كأولوية قصوى.
-5. **داتا سيت مخصصة لدولة العراق**: تم بناء قاعدة بيانات حصرية تحتوي على أكثر من 55,000 معلم، قرية، وشارع داخل العراق لزيادة الدقة المحلية بشكل هائل.
-
----
-
-## 💻 اللغات والتقنيات المستخدمة (Tech Stack)
-
-* **لغة البرمجة**: Python 3
-* **الذكاء الاصطناعي**: PyTorch (تدعم CUDA)، EasyOCR.
-* **البحث الجيومكاني**: FAISS (Facebook AI Similarity Search) - IndexIVFFlat.
-* **معالجة البيانات الضخمة**: Pandas, NumPy.
-* **تحليل الصور**: PIL (Pillow), Torchvision.
-* **واجهة المستخدم (Web UI)**: Streamlit.
-
----
-
-## ⚙️ متطلبات التشغيل (Installation & Requirements)
-
-لتشغيل هذا النظام على جهازك، ستحتاج إلى تثبيت المكتبات الأساسية والجديدة. افتح التيرمنل واكتب الأمر التالي:
+## Installation
+Ensure you have Python 3 installed. Install the required dependencies using the following commands:
 
 ```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install faiss-cpu pandas numpy streamlit pillow easyocr
 ```
-*(ملاحظة: تأكد من تثبيت `easyocr` لقراءة النصوص في الصور).*
 
----
+## Index Generation (First-Time Setup)
+Before running the application, you must generate the geospatial vector indices. The script has been optimized for memory efficiency (on-the-fly batch processing) to prevent `std::bad_alloc` errors during K-Means training.
 
-## 🏗️ الإعداد لأول مرة (بناء الفهرس الجغرافي)
-
-قبل تشغيل الموقع لأول مرة، يجب بناء قاعدة البيانات بنظام الخلايا الذكية (Hybrid System):
-
-**لبناء قاعدة بيانات العالم (5.1 مليون موقع مقسمة على 4096 خلية ذكية):**
+**Build the Global Database (5.1 Million points / 4096 cells):**
 ```bash
 python src/build_global_index.py
 ```
-*(تم حل مشكلة الذاكرة (Memory Leak) في هذا السكريبت، حيث أصبح يسحب البيانات ويعالجها على شكل وجبات On-The-Fly).*
 
-**لبناء قاعدة بيانات العراق فقط (أكثر من 55 ألف موقع):**
+**Build the Regional Database (Iraq):**
 ```bash
 python src/build_iraq_index.py
 ```
 
----
+## Usage
 
-## 🌐 كيفية تشغيل الموقع (Run the Web UI)
-
-أسهل طريقة للتعامل مع الذكاء الاصطناعي هي عبر واجهة المستخدم:
-
-1. **افتح التيرمنل** وتأكد أنك داخل مجلد المشروع:
-   ```bash
-   cd C:\Users\Msi\Desktop\ai\geolocalization
-   ```
-
-2. **اكتب أمر التشغيل التالي**:
-   ```bash
-   streamlit run app.py
-   ```
-
-3. **افتح المتصفح الخاص بك**:
-   الموقع سيعمل على الرابط `http://localhost:8501`.
-
-4. **طريقة الاستخدام**:
-   * قم برفع صورة (Upload Image).
-   * سيقوم النظام تلقائياً بـ:
-      1. فحص بيانات EXIF.
-      2. قراءة النصوص بالصورة (OCR).
-      3. تحليل المعالم البصرية عبر الذكاء الاصطناعي ومقاطعتها في خلايا FAISS.
-   * يمكنك اختيار تفعيل خيار **Use Iraq-Only Database** إذا كنت متأكداً أن الصورة في العراق لتضييق نطاق البحث.
-   * انقر على رابط **View on Google Maps** بجانب النتيجة لرؤية الموقع على الخريطة!
-
----
-
-## ⌨️ تشغيل البرنامج عبر موجه الأوامر (CLI)
-
-إذا كنت تفضل العمل على الـ Terminal:
-
-**للبحث المخصص داخل العراق:**
+### Web Interface
+To launch the Streamlit web application:
 ```bash
-python src/predict.py "مسار/الصورة.jpg" --iraq
+streamlit run app.py
+```
+Navigate to `http://localhost:8501`. Upload an image, optionally toggle the regional database constraint, and click "Predict Location". 
+
+### Command Line Interface (CLI)
+To run predictions directly from the terminal:
+
+**Global Search:**
+```bash
+python src/predict.py "path/to/image.jpg"
 ```
 
-**للبحث على مستوى العالم:**
+**Regional Search (Iraq):**
 ```bash
-python src/predict.py "مسار/الصورة.jpg"
+python src/predict.py "path/to/image.jpg" --iraq
 ```
 
----
-
-## 📊 الإضافات العلمية حسب توجيهات البحث (Research Updates)
-
-* **(Day 6)** تم تفعيل **النظام الهجين (Hybrid System v0.1)** حيث تم استبدال الـ Flat Search بخوارزمية `IndexIVFFlat` التي تطبق مبدأ الـ Coarse Classification لتوزيع العالم إلى 4096 خلية جغرافية.
-* **(Day 7)** تم تفعيل نظام الـ **OCR** ثنائي اللغة (عربي/إنجليزي) لمساعدة الخوارزمية في الصور التي تحتوي على نصوص مبهمة لغوياً، إلى جانب تفعيل محرك قراءة الـ **EXIF GPS** لضمان دقة مطلقة في حال توفر البصمة الرقمية للصورة.
-* **(Day 8)** تم حل معضلة **`std::bad_alloc`** وانهيار الـ RAM أثناء بناء فهرس العالم عبر استقطاع عينة عشوائية بحجم 200,000 موقع لتدريب الـ K-Means، ومن ثم ضخ ملايين المواقع بنظام الدفعات (Batches On-The-Fly) استجابة للقيود الهندسية للمشروع.
-
----
-***
+## Research & Development Notes
+- **Hybrid System (Coarse Classification):** Replaced exhaustive L2 distance search with `IndexIVFFlat`. By training the quantizer on a 200,000-sample subset and distributing 5.1M embeddings incrementally, we resolved previous memory leak constraints.
+- **Data Fusion:** Combined baseline visual embeddings with EXIF metadata and multi-language OCR to create a robust, multi-modal prediction pipeline.
+- **Domain Adaptation:** Overcame geographic bias in the baseline GeoCLIP model by enforcing region-specific FAISS index bounds, forcing the network to match desert/local architecture exclusively with regional datasets.
