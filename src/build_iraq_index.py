@@ -74,6 +74,7 @@ def build_iraq_index():
             batch_tensor = torch.tensor(batch_coords, dtype=torch.float32).to(device)
             
             features = model.location_encoder(batch_tensor)
+            features = torch.nn.functional.normalize(features, dim=1)
             all_features.append(features.cpu().numpy())
             
     all_features = np.concatenate(all_features, axis=0)
@@ -81,7 +82,14 @@ def build_iraq_index():
     print(f"[LOG] Embeddings shape: {all_features.shape}")
     print("[LOG] Building FAISS Index...")
     
-    index = faiss.IndexFlatL2(512)
+    # Use Hybrid System v0.1: Coarse Classification (Quantization) -> Fine Retrieval
+    nlist = 256  # Number of coarse cells for Iraq (smaller dataset)
+    quantizer = faiss.IndexFlatIP(512)
+    index = faiss.IndexIVFFlat(quantizer, 512, nlist, faiss.METRIC_INNER_PRODUCT)
+    
+    print(f"[LOG] Training Coarse Classifier (nlist={nlist}) on {len(all_features)} locations...")
+    index.train(all_features)
+    print("[LOG] Distributing locations into coarse cells...")
     index.add(all_features)
     
     faiss_path = "data/iraq_index.faiss"

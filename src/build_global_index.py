@@ -101,30 +101,49 @@ def build_global_index():
     lons = df["LON"].values
     coords = np.stack([lats, lons], axis=1) # (N, 2)
     
-    batch_size = 4096
-    num_batches = int(np.ceil(len(coords) / batch_size))
+    # 1. Prepare training sample for FAISS Coarse Classifier (max 200k)
+    train_sample_size = min(200000, len(coords))
+    print(f"[LOG] Generating embeddings for {train_sample_size} training samples...")
+    train_coords = coords[:train_sample_size]
     
-    print(f"[LOG] Generating embeddings for {len(coords)} cities...")
-    all_features = []
+    batch_size = 4096
+    train_features = []
     
     with torch.no_grad():
-        for i in tqdm(range(num_batches), desc="Processing Cities"):
-            batch_coords = coords[i * batch_size : (i + 1) * batch_size]
-            batch_tensor = torch.tensor(batch_coords, dtype=torch.float32).to(device)
+        for i in range(0, len(train_coords), batch_size):
+            batch_c = train_coords[i : i + batch_size]
+            batch_tensor = torch.tensor(batch_c, dtype=torch.float32).to(device)
+            feats = model.location_encoder(batch_tensor)
+            feats = torch.nn.functional.normalize(feats, dim=1)
+            train_features.append(feats.cpu().numpy())
             
-            features = model.location_encoder(batch_tensor)
-            all_features.append(features.cpu().numpy())
+    train_features_np = np.concatenate(train_features, axis=0)
+    
+    # 2. Train Coarse Classifier
+    nlist = 4096
+    quantizer = faiss.IndexFlatIP(512)
+    index = faiss.IndexIVFFlat(quantizer, 512, nlist, faiss.METRIC_INNER_PRODUCT)
+    
+    print(f"[LOG] Training Coarse Classifier (nlist={nlist}) on {len(train_features_np)} locations...")
+    index.train(train_features_np)
+    
+    # Free up memory
+    del train_features
+    del train_features_np
+    
+    # 3. Process all cities in chunks and add to FAISS immediately to save RAM
+    print(f"[LOG] Generating and adding embeddings for all {len(coords)} locations on the fly...")
+    num_batches = int(np.ceil(len(coords) / batch_size))
+    
+    with torch.no_grad():
+        for i in tqdm(range(num_batches), desc="Processing & Adding"):
+            batch_c = coords[i * batch_size : (i + 1) * batch_size]
+            batch_tensor = torch.tensor(batch_c, dtype=torch.float32).to(device)
+            feats = model.location_encoder(batch_tensor)
+            feats = torch.nn.functional.normalize(feats, dim=1)
             
-    all_features = np.concatenate(all_features, axis=0) # (N, 512)
-    
-    print(f"[LOG] Embeddings shape: {all_features.shape}")
-    print("[LOG] Building FAISS Index...")
-    
-    # Use L2 normalized vectors for Inner Product (cosine similarity)
-    # Actually GeoCLIP location encoder outputs aren't strictly normalized by default,
-    # but L2 index is fine. Let's use IndexFlatL2 as standard.
-    index = faiss.IndexFlatL2(512)
-    index.add(all_features)
+            # Add directly to FAISS, do not keep in python list
+            index.add(feats.cpu().numpy())
     
     faiss_path = "data/global_index.faiss"
     faiss.write_index(index, faiss_path)
