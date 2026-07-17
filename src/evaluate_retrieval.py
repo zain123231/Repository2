@@ -6,141 +6,125 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
+from torchvision import transforms
 
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from geoclip import GeoCLIP
 from src.metrics import calculate_metrics, haversine_distance
 
-def evaluate_retrieval(query_dir: str, query_meta: str, index_path: str, index_meta: str, mock: bool = False):
-    print(f"[LOG] Loading FAISS index from {index_path}...")
-    if not os.path.exists(index_path) or not os.path.exists(index_meta):
-        print(f"[ERROR] FAISS index or metadata not found. Run build_index.py first.")
-        return
-        
-    index = faiss.read_index(index_path)
-    ref_df = pd.read_csv(index_meta)
-    
-    print("[LOG] Loading GeoCLIP model...")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = GeoCLIP().to(device)
+def extract_clip_features(img_paths, model, preprocess, device, batch_size=32):
+    features = []
     model.eval()
     
-    queries = []
-    true_lats = []
-    true_lons = []
-    
-    if mock:
-        print("[LOG] MOCK MODE: Generating random query images.")
-        os.makedirs(query_dir, exist_ok=True)
-        for i in range(50):
-            img_path = os.path.join(query_dir, f"mock_query_{i}.jpg")
-            if not os.path.exists(img_path):
-                img = Image.fromarray(np.random.randint(0, 255, (224, 224, 3), dtype=np.uint8))
-                img.save(img_path)
-            queries.append(img_path)
-            true_lats.append(np.random.uniform(-90, 90))
-            true_lons.append(np.random.uniform(-180, 180))
-    else:
-        print(f"[LOG] Loading query metadata from {query_meta}...")
-        df = pd.read_csv(query_meta)
-        for _, row in df.iterrows():
-            img_path = os.path.join(query_dir, f"{row['IMG_ID']}.jpg")
-            if os.path.exists(img_path):
-                queries.append(img_path)
-                true_lats.append(row['LAT'])
-                true_lons.append(row['LON'])
+    for i in range(0, len(img_paths), batch_size):
+        batch_paths = img_paths[i:i+batch_size]
+        batch_tensors = []
+        valid_indices = []
+        for j, p in enumerate(batch_paths):
+            try:
+                img = Image.open(p).convert("RGB")
+                batch_tensors.append(preprocess(img))
+                valid_indices.append(j)
+            except:
+                pass
                 
-    print(f"[LOG] Evaluating {len(queries)} query images...")
+        if not batch_tensors:
+            # All failed, insert zeros
+            features.extend([np.zeros(768)] * len(batch_paths))
+            continue
+            
+        with torch.no_grad():
+            img_tensor = torch.stack(batch_tensors).to(device)
+            # Use OpenAI CLIP from HuggingFace
+            inputs = {"pixel_values": img_tensor}
+            img_emb = model.get_image_features(**inputs)
+            img_emb = img_emb / img_emb.norm(dim=-1, keepdim=True)
+            emb_np = img_emb.cpu().numpy()
+            
+        # Reconstruct with failures
+        batch_feats = []
+        v_idx = 0
+        for j in range(len(batch_paths)):
+            if j in valid_indices:
+                batch_feats.append(emb_np[v_idx])
+                v_idx += 1
+            else:
+                batch_feats.append(np.zeros(768))
+        features.extend(batch_feats)
+        
+    return np.array(features, dtype=np.float32)
+
+def evaluate_image_retrieval(query_csv, query_dir, ref_csv, ref_dir):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"[LOG] Device: {device}")
     
-    from torchvision import transforms
-    preprocess = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], 
-                             std=[0.26862954, 0.26130258, 0.27577711])
-    ])
+    print("[LOG] Loading CLIP model for Image-to-Image retrieval...")
+    from transformers import CLIPModel, CLIPProcessor
+    model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14").to(device)
+    processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
     
-    from transformers import AutoProcessor
-    import warnings
-    warnings.filterwarnings("ignore")
-    processor = AutoProcessor.from_pretrained("openai/clip-vit-large-patch14", local_files_only=False)
+    # Custom preprocess to match our transforms if needed, or use processor
+    def preprocess(img):
+        return processor(images=img, return_tensors="pt")["pixel_values"].squeeze(0)
     
-    # Load countries for Zero-Shot Prediction
-    cities_df = pd.read_csv("data/mock_cities.csv")
-    countries = cities_df['country'].unique().tolist()
-    country_prompts = [f"A photo taken in {c}" for c in countries]
-    print(f"[LOG] Preparing {len(countries)} country prompts for Zero-Shot fusion...")
+    print("[LOG] Loading Reference Gallery...")
+    ref_df = pd.read_csv(ref_csv)
+    ref_paths = [os.path.join(ref_dir, str(row.get('IMG_PATH', row.get('IMG_ID', '')))) for _, row in ref_df.iterrows()]
+    # Fallback to appending .jpg if not there
+    ref_paths = [p if p.endswith('.jpg') else p + '.jpg' for p in ref_paths]
     
-    with torch.no_grad():
-        country_inputs = processor(text=country_prompts, return_tensors="pt", padding=True).to(device)
-        country_text_features = model.image_encoder.CLIP.get_text_features(**country_inputs)
-        country_text_features = country_text_features / country_text_features.norm(dim=-1, keepdim=True)
+    print(f"[LOG] Extracting features for {len(ref_paths)} reference images...")
+    ref_features = extract_clip_features(ref_paths, model, preprocess, device)
+    
+    print("[LOG] Building FAISS Index...")
+    index = faiss.IndexFlatL2(768)
+    index.add(ref_features)
+    
+    print("[LOG] Loading Query Images...")
+    query_df = pd.read_csv(query_csv)
+    query_paths = [os.path.join(query_dir, str(row.get('IMG_PATH', row.get('IMG_ID', '')))) for _, row in query_df.iterrows()]
+    query_paths = [p if p.endswith('.jpg') else p + '.jpg' for p in query_paths]
+    query_lats = query_df['LAT'].values
+    query_lons = query_df['LON'].values
+    
+    print(f"[LOG] Evaluating {len(query_paths)} queries...")
+    query_features = extract_clip_features(query_paths, model, preprocess, device)
+    
+    D, I = index.search(query_features, 1)
     
     distances_km = []
-    
-    with torch.no_grad():
-        for i, img_path in enumerate(tqdm(queries)):
-            try:
-                img = Image.open(img_path).convert("RGB")
-                img_tensor = preprocess(img).unsqueeze(0).to(device)
-                
-                # 1. GeoCLIP Image Feature (512 dim)
-                img_emb = model.image_encoder(img_tensor)
-                img_emb = img_emb / img_emb.norm(dim=-1, keepdim=True)
-                
-                # 2. CLIP Image Feature for Zero-Shot Classification (768 dim)
-                clip_img_input = processor(images=img, return_tensors="pt")["pixel_values"].to(device)
-                clip_img_emb = model.image_encoder.CLIP.get_image_features(clip_img_input)
-                clip_img_emb = clip_img_emb / clip_img_emb.norm(dim=-1, keepdim=True)
-                
-                # Zero-Shot Predict Country
-                similarities = (clip_img_emb @ country_text_features.t()).squeeze(0)
-                best_country_idx = similarities.argmax().item()
-                
-                # 3. Selected Text Feature (768 dim)
-                text_emb = country_text_features[best_country_idx].unsqueeze(0)
-                
-                # 4. Fusion (512 + 768 = 1280 dim)
-                fused_emb = torch.cat([img_emb, text_emb], dim=-1)
-                fused_emb = fused_emb / fused_emb.norm(dim=-1, keepdim=True)
-                
-                fused_np = fused_emb.cpu().numpy().astype('float32')
-                
-                # FAISS search
-                k = 1 # Top-1 retrieval
-                D, I = index.search(fused_np, k)
-                
-                # Retrieve coordinate from reference metadata
-                top_idx = I[0][0]
-                pred_lat = ref_df.iloc[top_idx]['LAT']
-                pred_lon = ref_df.iloc[top_idx]['LON']
-                
-                # Calculate distance
-                gt_lat = true_lats[i]
-                gt_lon = true_lons[i]
-                dist = haversine_distance(
-                    torch.tensor([[pred_lat, pred_lon]]),
-                    torch.tensor([[gt_lat, gt_lon]])
-                )
-                distances_km.append(dist.item())
-                
-            except Exception as e:
-                print(f"[ERROR] Failed to process {img_path}: {e}")
-                
+    for i in range(len(query_paths)):
+        if np.sum(np.abs(query_features[i])) == 0:
+            continue # Skipped failed image
+            
+        top_idx = I[i][0]
+        pred_lat = ref_df.iloc[top_idx]['LAT']
+        pred_lon = ref_df.iloc[top_idx]['LON']
+        
+        gt_lat = query_lats[i]
+        gt_lon = query_lons[i]
+        
+        dist = haversine_distance(
+            torch.tensor([[pred_lat, pred_lon]], dtype=torch.float32),
+            torch.tensor([[gt_lat, gt_lon]], dtype=torch.float32)
+        ).item()
+        distances_km.append(dist)
+        
     if distances_km:
         metrics = calculate_metrics(torch.tensor(distances_km))
-        print(f"\nRetrieval Metrics (FAISS Top-1): {metrics}")
+        print(f"\n================ IMAGE RETRIEVAL BASELINE ================")
+        print(f"Evaluated Images: {len(distances_km)}")
+        for k, v in metrics.items():
+            print(f"{k}: {v:.2f}")
     else:
         print("[WARNING] No valid distances computed.")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Evaluate FAISS retrieval baseline")
-    parser.add_argument("--query-dir", type=str, default="data/im2gps3k/images", help="Path to query images")
-    parser.add_argument("--query-meta", type=str, default="data/im2gps3k/metadata.csv", help="Path to query metadata")
-    parser.add_argument("--index-path", type=str, default="data/reference.faiss", help="Path to FAISS index")
-    parser.add_argument("--index-meta", type=str, default="data/reference_meta.csv", help="Path to index metadata")
-    parser.add_argument("--mock", action="store_true", help="Run in mock mode")
-    
+    parser = argparse.ArgumentParser(description="Evaluate Image-to-Image Retrieval Baseline")
+    parser.add_argument("--query-csv", type=str, default="data/im2gps3k_test.csv")
+    parser.add_argument("--query-dir", type=str, default="data/im2gps3k/images")
+    parser.add_argument("--ref-csv", type=str, default="data/mp16_train.csv")
+    parser.add_argument("--ref-dir", type=str, default="data/mp16/images")
     args = parser.parse_args()
-    evaluate_retrieval(args.query_dir, args.query_meta, args.index_path, args.index_meta, args.mock)
+    
+    evaluate_image_retrieval(args.query_csv, args.query_dir, args.ref_csv, args.ref_dir)

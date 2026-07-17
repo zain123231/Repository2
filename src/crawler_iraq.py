@@ -49,7 +49,7 @@ def get_image_urls(pageids):
         params = {
             "action": "query",
             "prop": "imageinfo",
-            "iiprop": "url",
+            "iiprop": "url|extmetadata",
             "pageids": "|".join(map(str, chunk)),
             "format": "json"
         }
@@ -61,9 +61,23 @@ def get_image_urls(pageids):
                 pages = data['query']['pages']
                 for page_id, page_data in pages.items():
                     if 'imageinfo' in page_data and len(page_data['imageinfo']) > 0:
-                        url = page_data['imageinfo'][0]['url']
+                        info = page_data['imageinfo'][0]
+                        url = info['url']
+                        
+                        license_name = "Unknown"
+                        author_name = "Unknown"
+                        if 'extmetadata' in info:
+                            ext = info['extmetadata']
+                            if 'LicenseShortName' in ext:
+                                license_name = ext['LicenseShortName']['value']
+                            if 'Artist' in ext:
+                                # Strip HTML tags if any
+                                import re
+                                author_raw = ext['Artist']['value']
+                                author_name = re.sub('<[^<]+>', '', author_raw)
+                                
                         if url.lower().endswith(('.jpg', '.jpeg', '.png')):
-                            urls.append((page_id, url))
+                            urls.append((page_id, url, license_name, author_name))
         except Exception as e:
             print(f"Error fetching URLs: {e}")
     return urls
@@ -109,12 +123,12 @@ def main():
                 urls = get_image_urls(page_ids)
                 
                 # Map URLs back to coordinates
-                url_dict = dict(urls)
+                url_dict = {str(pid): (u, l, a) for pid, u, l, a in urls}
                 
                 for p in places:
                     pid = str(p['pageid'])
                     if pid in url_dict:
-                        url = url_dict[pid]
+                        url, license_name, author_name = url_dict[pid]
                         filename = f"{pid}.jpg"
                         
                         # Add to list
@@ -123,7 +137,9 @@ def main():
                             "lat": p['lat'],
                             "lon": p['lon'],
                             "url": url,
-                            "filename": filename
+                            "filename": filename,
+                            "license": license_name,
+                            "author": author_name
                         })
             
             pbar.update(1)
@@ -133,14 +149,39 @@ def main():
     
     print(f"Found {len(results)} images in Iraq! Starting download...")
     
+    # 1km distance filtering (Haversine)
+    def haversine(lat1, lon1, lat2, lon2):
+        from math import radians, cos, sin, asin, sqrt
+        lon1, lat1, lon2, lat2 = map(radians, [lon1, lat1, lon2, lat2])
+        dlon = lon2 - lon1
+        dlat = lat2 - lat1
+        a = sin(dlat/2)**2 + cos(lat1) * cos(lat2) * sin(dlon/2)**2
+        c = 2 * asin(sqrt(a))
+        return 6371 * c
+        
+    filtered_results = []
+    for item in results:
+        # Check against already added to ensure min 1km separation
+        too_close = False
+        for added in filtered_results:
+            if haversine(item['lat'], item['lon'], added['lat'], added['lon']) < 1.0:
+                too_close = True
+                break
+        if not too_close:
+            filtered_results.append(item)
+            
+    print(f"After 1km geographic separation filtering: {len(filtered_results)} images left.")
+    
     valid_data = []
-    for item in tqdm(results, desc="Downloading Images"):
+    for item in tqdm(filtered_results, desc="Downloading Images"):
         filepath = download_image(item['url'], item['filename'])
         if filepath:
             valid_data.append({
-                "filename": item['filename'],
-                "lat": item['lat'],
-                "lon": item['lon']
+                "IMG_PATH": item['filename'],
+                "LAT": item['lat'],
+                "LON": item['lon'],
+                "license": item.get('license', 'Unknown'),
+                "author": item.get('author', 'Unknown')
             })
             
     df = pd.DataFrame(valid_data)

@@ -56,8 +56,8 @@ class GeoDataset(Dataset):
             image = Image.open(img_path).convert('RGB')
             image = self.transform(image)
         except Exception as e:
-            # Fallback to random if image is missing/corrupted
-            image = torch.zeros(3, 224, 224)
+            print(f"[WARNING] Skipping corrupted image {img_path}: {e}")
+            return self.__getitem__((idx + 1) % len(self))
             
         lat = self.data_frame.iloc[idx]['LAT']
         lon = self.data_frame.iloc[idx]['LON']

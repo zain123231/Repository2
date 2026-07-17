@@ -33,7 +33,7 @@ def load_models_and_index():
     transform = transforms.Compose([
         transforms.Resize((224, 224)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        transforms.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711]),
     ])
     
     return device, model, transform, global_index, global_cities, iraq_index, iraq_cities
@@ -45,30 +45,10 @@ def load_ocr_reader():
 
 def get_predictions(image, use_iraq=False, top_k=3):
     device, model, _, global_index, global_cities, iraq_index, iraq_cities = load_models_and_index()
+    ocr_reader = load_ocr_reader()
     
-    import torch.nn.functional as F
-    import torch
-    import numpy as np
+    from src.inference import InferenceEngine
     
-    # 1. TTA (Test-Time Augmentation): 10 Crops
-    base_transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.TenCrop(224)
-    ])
-    to_tensor_norm = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-    
-    crops = base_transform(image)
-    img_tensor = torch.stack([to_tensor_norm(crop) for crop in crops]).to(device)
-    
-    with torch.no_grad():
-        img_features_batch = model.image_encoder(img_tensor)
-        img_feature = img_features_batch.mean(dim=0, keepdim=True)
-        img_feature = F.normalize(img_feature, dim=-1)
-        img_features_np = img_feature.cpu().numpy()
-        
     if use_iraq and iraq_index is not None:
         index = iraq_index
         if hasattr(index, 'nprobe'):
@@ -80,60 +60,25 @@ def get_predictions(image, use_iraq=False, top_k=3):
             index.nprobe = min(64, getattr(index, 'nlist', 64))
         cities = global_cities
         
-    # Coarse Search
-    distances, indices = index.search(img_features_np, top_k)
+    engine = InferenceEngine(model, device, index, cities, ocr_reader)
     
-    coarse_candidates = []
-    for i in range(top_k):
-        idx = indices[0][i]
-        dist = distances[0][i]
-        row = cities.iloc[idx]
-        name = row.get('City', 'Unknown')
-        if pd.isna(name): name = "Grid Location"
-        country = row.get('CountryCode', 'Unknown')
-        lat = row['LAT']
-        lon = row['LON']
-        coarse_candidates.append((lat, lon, name, country, dist))
-
-    # Coarse-to-Fine Micro-Grid
-    results = []
-    grid_steps = 40
-    offset_range = 0.5
-    offsets = np.linspace(-offset_range, offset_range, grid_steps)
-
-    for rank, (coarse_lat, coarse_lon, name, country, dist) in enumerate(coarse_candidates):
-        lat_grid, lon_grid = np.meshgrid(coarse_lat + offsets, coarse_lon + offsets)
-        micro_grid = np.vstack([lat_grid.ravel(), lon_grid.ravel()]).T
-        micro_grid_tensor = torch.tensor(micro_grid, dtype=torch.float32).to(device)
-        
-        with torch.no_grad():
-            loc_features = model.location_encoder(micro_grid_tensor)
-            loc_features = F.normalize(loc_features, dim=-1)
-            
-            logit_scale = model.logit_scale.exp()
-            similarity = logit_scale * (img_feature @ loc_features.T)
-            
-            best_local_idx = similarity.argmax().item()
-            best_local_score = similarity[0, best_local_idx].item()
-            best_local_coord = micro_grid[best_local_idx]
-            
-            # Map score roughly to confidence
-            raw_cosine = best_local_score / logit_scale.item()
-            conf = max(0.0, raw_cosine * 100.0)
-            
-            results.append({
-                "name": name,
-                "country": country,
-                "lat": best_local_coord[0],
-                "lon": best_local_coord[1],
-                "distance": best_local_score,
-                "confidence": f"{conf:.1f}%"
-            })
-            
-    # Sort results by the new refined score (highest first)
-    results.sort(key=lambda x: x['distance'], reverse=True)
+    # We use A4 variant (TTA + Micro-Grid + OCR) for the best results in the app
+    results = engine.predict(image, variant="A4", top_k=top_k)
     
-    return results[:top_k]
+    formatted_results = []
+    for res in results:
+        # If it's a coarse result it has no confidence_prob, if micro-grid it has.
+        conf_str = f"{res['confidence_prob']:.1f}%" if res['confidence_prob'] > 0 else "N/A"
+        formatted_results.append({
+            "name": res["name"],
+            "country": res["country"],
+            "lat": res["lat"],
+            "lon": res["lon"],
+            "distance": res["score"],
+            "confidence": conf_str,
+            "ocr_text": res["ocr_text"]
+        })
+    return formatted_results
 
 def get_exif_location(image):
     try:
@@ -172,7 +117,7 @@ def get_exif_location(image):
 
 def main():
     import sys
-    use_forensic = "--forensic" in sys.argv
+    use_forensic = "--use-exif-oracle" in sys.argv
     
     st.title("🌍 AI Geo-Locator")
     st.markdown("Upload a photo and the AI will predict its geographic location based on visual features.")
@@ -191,14 +136,17 @@ def main():
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
-        image = Image.open(uploaded_file).convert("RGB")
+        raw_image = Image.open(uploaded_file)
+        
+        exif_loc = None
+        if use_forensic:
+            exif_loc = get_exif_location(raw_image)
+            
+        image = raw_image.convert("RGB")
         st.image(image, caption="Uploaded Image", use_container_width=True)
         
         if st.button("📍 Predict Location", type="primary"):
-            # Check for EXIF data first (Only if --forensic flag is enabled)
-            exif_loc = None
-            if use_forensic:
-                exif_loc = get_exif_location(image)
+            # Check for EXIF data first (Only if --use-exif-oracle flag is enabled)
             
             if exif_loc:
                 st.success("✅ Exact Location Found from Image Metadata (EXIF)!")
@@ -252,7 +200,7 @@ def main():
                         <p style="margin: 5px 0; font-size: 14px; color: #ccc;">
                             <b>Latitude:</b> {res['lat']:.4f} <br>
                             <b>Longitude:</b> {res['lon']:.4f} <br>
-                            <b>Confidence Score:</b> {res['confidence']}
+                            {f"<b>Confidence:</b> {res['confidence']}" if res['confidence'] != 'N/A' else ""}
                         </p>
                         <a href="https://www.google.com/maps?q={res['lat']},{res['lon']}" target="_blank" style="text-decoration: none;">
                             <button style="background-color: #4CAF50; color: white; border: none; padding: 8px 15px; border-radius: 5px; cursor: pointer; margin-top: 10px;">

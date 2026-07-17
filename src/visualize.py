@@ -133,39 +133,20 @@ def main():
         # Load the real dataset
         dataset = GeoDataset(csv_file=args.csv, img_dir="data/images", mock=False)
         
-        if args.global_search:
-            print("[LOG] Loading Global FAISS index and cities...")
-            global_index_path = "data/global_index.faiss"
-            global_cities_path = "data/global_cities.csv"
+        print("[LOG] Loading Global FAISS index and cities...")
+        global_index_path = "data/global_index.faiss"
+        global_cities_path = "data/global_cities.csv"
+        
+        if not os.path.exists(global_index_path) or not os.path.exists(global_cities_path):
+            print("[ERROR] Global index not found. Run 'python src/build_global_index.py' first.")
+            sys.exit(1)
             
-            if not os.path.exists(global_index_path) or not os.path.exists(global_cities_path):
-                print("[ERROR] Global index not found. Run 'python src/build_global_index.py' first.")
-                sys.exit(1)
-                
-            index = faiss.read_index(global_index_path)
-            cities_df = pd.read_csv(global_cities_path, low_memory=False)
-            
-            ref_coords = np.stack([cities_df["LAT"].values, cities_df["LON"].values], axis=1)
-            city_names = cities_df["City"].values
-            country_codes = cities_df["CountryCode"].values
-            
-        else:
-            # We need reference coordinates. For a real dataset visualization, we can just 
-            # use the dataset's own coordinates as the reference gallery for simplicity.
-            ref_coords = []
-            for i in range(len(dataset)):
-                _, coord = dataset[i]
-                ref_coords.append(coord.numpy())
-                
-            ref_coords = np.array(ref_coords)
-            ref_coords_tensor = torch.tensor(ref_coords, dtype=torch.float32).to(device)
-            with torch.no_grad():
-                ref_features = model.location_encoder(ref_coords_tensor)
-                
-            index = faiss.IndexFlatL2(512)
-            index.add(ref_features.cpu().numpy())
-            city_names = [f"Data Index {i}" for i in range(len(dataset))]
-            country_codes = ["Unknown" for _ in range(len(dataset))]
+        index = faiss.read_index(global_index_path)
+        cities_df = pd.read_csv(global_cities_path, low_memory=False)
+        
+        ref_coords = np.stack([cities_df["LAT"].values, cities_df["LON"].values], axis=1)
+        city_names = cities_df["City"].values
+        country_codes = cities_df["CountryCode"].values
             
         gt_coords = []
         pred_coords = []
