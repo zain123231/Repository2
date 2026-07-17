@@ -157,7 +157,7 @@ def evaluate_streetclip(dataset_dir: str, metadata_csv: str, cities_csv: str, mo
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate StreetCLIP on Im2GPS3k/YFCC4k")
-    parser.add_argument("--data-dir", type=str, default="../data/im2gps3k/images", help="Path to images")
+    parser.add_argument("--data-dir", type=str, default="../data/im2gps3k/images_real", help="Path to images")
     parser.add_argument("--csv", type=str, default="../data/im2gps3k/metadata.csv", help="Path to metadata CSV")
     parser.add_argument("--cities", type=str, default="data/mock_cities.csv", help="Path to cities database CSV")
     parser.add_argument("--mock", action="store_true", help="Run a quick mock evaluation")

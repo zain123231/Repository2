@@ -337,16 +337,29 @@ $$ L_{embedding} = \text{MLP}(\text{concat}(\sin(lat), \cos(lat), \sin(lon), \co
 =========================
 SECTION 16
 Scientific Validation and Research Compliance
+
+
 =========================
 
 ## Scientific Validation and Research Compliance
 
 ### 1. Official GeoCLIP Alignment
-The project currently utilizes the official GeoCLIP reference implementation. To preserve scientific validity, the core components located under the geoclip/ package (including the CLIP backbone, ImageEncoder, LocationEncoder, and the predict() function) remain entirely unedited and identical to the original implementation. The project-specific extensions are strictly contained within independent modules (pp.py, src/predict.py, src/evaluate_final.py), which wrap around the official inference logic without altering the neural architecture or pretrained weights.
+The project currently utilizes the official GeoCLIP reference implementation. To preserve scientific validity, the core components located under the geoclip/ package (including the CLIP backbone, ImageEncoder, LocationEncoder, and the predict() function) remain entirely unedited and identical to the original implementation. The project-specific extensions are strictly contained within independent modules ( app.py, src/predict.py, src/evaluate_final.py), which wrap around the official inference logic without altering the neural architecture or pretrained weights.
 
-### 2. Official Im2GPS3k Evaluation
+### 2. Dataset Organization and Provenance
+- **Official Dataset Name:** Im2GPS3k
+- **Original Authors:** Vo et al.
+- **Original Paper Citation:** Hays, J., & Efros, A. A. (2008). im2gps: estimating geographic information from a single image. CVPR. (Note: Im2GPS3k is a later extended test set by Vo et al.)
+- **Download Source:** Downloaded natively via `src/download_im2gps3k.py` from the established public Hugging Face mirror (`Wendy-Fly/AAAI-2026`). 
+- **Provenance Note:** The Hugging Face mirror is solely utilized as a robust distribution source to guarantee reproducible evaluation availability. The mirror's owner is not the original creator of the Im2GPS3k dataset.
+- **Dataset Separation:** To prevent any confusion during scientific review or accidental data leakage, all mock or testing images are strictly isolated in `tests/fixtures/mock/`. The official benchmark images are stored exclusively in `data/im2gps3k/images_real/im2gps3ktest`.
+
+### 3. Dataset Caching Mechanism
+- **Efficiency Update:** The dataset management script (`src/download_im2gps3k.py`) has been upgraded with a persistent local cache. 
+- **Workflow:** The script automatically detects if the dataset exists and contains the expected number of images (~3000). If found, it skips the download and extraction steps entirely. If corrupted or missing, it automatically re-downloads. This drastically speeds up evaluation pipelines without altering benchmark results.
+
+### 4. Official Im2GPS3k Evaluation
 - **Official Benchmark Used:** Im2GPS3k (Official test set).
-- **Dataset Source:** Downloaded natively via src/download_im2gps3k.py from the established public Hugging Face repository (Wendy-Fly/AAAI-2026).
 - **Number of Evaluation Images:** 2,997 full-resolution real-world images.
 - **Evaluation Procedure:** The evaluation iterates over the test set, querying the model using a strict zero-shot methodology.
 - **Zero-Shot Evaluation Workflow:** Uses GeoCLIP(from_pretrained=True).predict(image_path) to compute cosine similarities strictly against the provided independent worldwide representation (coordinates_100K.csv).
@@ -355,14 +368,14 @@ The project currently utilizes the official GeoCLIP reference implementation. To
   1. python src/download_im2gps3k.py
   2. python src/evaluate_final.py
 
-### 3. Data Leakage Fix
+### 5. Data Leakage Fix
 - **Previous Problem:** The prior evaluation pipeline generated its FAISS retrieval gallery by dynamically extracting coordinates from the evaluation dataset itself. This caused a direct data leak by essentially making the test data the only viable answers.
 - **Why It's Incorrect:** Building a gallery from evaluation coordinates guarantees that the correct location is always in the retrieval set, artificially inflating results and violating scientific evaluation protocols.
 - **Correction:** evaluate_final.py was completely rewritten and no longer builds a custom index from the test set.
 - **Independent Gallery Usage:** The script now utilizes the official GeoCLIP().predict() function, which inherently queries the independent, frozen 100K coordinate dictionary (coordinates_100K.csv).
 - **Why this Produces Valid Evaluation:** By completely decoupling the search space from the evaluation labels, the benchmark numbers produced represent genuine predictive accuracy on unseen data.
 
-### 4. EXIF Forensic Mode
+### 6. EXIF Forensic Mode
 - **Why EXIF is Disabled by Default:** Scientific visual geolocalization assumes the model must predict location solely based on visual features. Leaving EXIF metadata extraction on by default provides the exact ground-truth answers instantly, violating the core premise of computer vision evaluation.
 - **Implementation:** EXIF metadata extraction has been entirely disabled by default across the system.
 - **How --forensic Works:** A specific command-line argument was introduced to manually re-enable metadata extraction for explicit forensic analysis use-cases.
@@ -371,7 +384,7 @@ The project currently utilizes the official GeoCLIP reference implementation. To
   - Forensic (Metadata allowed): streamlit run app.py -- --forensic
   - CLI Forensic: python src/predict.py my_image.jpg --forensic
 
-### 5. Evaluation Pipeline
+### 7. Evaluation Pipeline
 The evaluation operates as follows:
 1. Initialize the frozen, official GeoCLIP model using pre-trained weights.
 2. Load the official Im2GPS3k evaluation CSV dataset.
@@ -380,7 +393,7 @@ The evaluation operates as follows:
 5. Calculate the Haversine distance between the model's top prediction coordinate and the actual ground truth.
 6. Aggregate distances and generate accuracy metrics per spatial threshold.
 
-`mermaid
+```mermaid
 flowchart TD
     A[Load GeoCLIP Pretrained Model] --> B[Load Im2GPS3k Images]
     B --> C[Zero-Shot Forward Pass]
@@ -388,50 +401,65 @@ flowchart TD
     D --> E[Retrieve Top GPS Coordinate]
     E --> F[Calculate Haversine Distance to Ground Truth]
     F --> G[Aggregate Results & Generate CDF]
-`
+```
 
-### 6. Benchmark Results
-- **Generated CSV File:** 
-esults/geoclip_im2gps3k.csv
-- **Result Location:** 
-esults/cdf_curve.png
+### 8. Automated Scientific Reporting System
+The evaluation pipeline natively includes an automated scientific reporting system designed to generate publication-ready tables and figures. To ensure historical preservation, every evaluation run is saved within a unique timestamped directory: `results/YYYYMMDD_HHMMSS/`.
+
+**Artifact Structure:**
+- `figures/`: High-resolution (300 DPI) figures saved in PNG, SVG, and PDF formats.
+  - `cdf_curve.*`: Use in the "Results" section to demonstrate overall model performance against baselines.
+  - `error_histogram.*`: Use to visualize the logarithmic frequency of prediction errors.
+  - `error_boxplot.*`: Use in supplementary materials to demonstrate error variance.
+  - `accuracy_chart.*`: Use to quickly compare standard threshold metrics (1km, 25km, 200km, etc.).
+- `tables/`: Contains `evaluation_summary.md` with calculated metrics (Accuracies, Mean/Median errors, Runtime).
+- `latex/`: Contains `evaluation_summary.tex` for direct copy-pasting into IEEE paper templates.
+- `csv/`: Raw and summarized data, including `detailed_predictions.csv`.
+- `report.md`: A comprehensive scientific markdown report detailing hardware, model versions, datasets, and runtime.
+
+### 9. Benchmark Results
+- **Results Location:** Generated within `results/<timestamp>/`
 - **Evaluation Metrics:**
-  - **Median Error:** 241.78 km
-  - **Accuracy @ 1km:** 13.05%
-  - **Accuracy @ 25km:** 32.17%
-  - **Accuracy @ 200km:** 47.98%
-  - **Accuracy @ 750km:** 66.53%
-  - **Accuracy @ 2500km:** 82.28%
-- **Comparison:** These results perfectly mirror the established baseline metrics published in the original GeoCLIP research paper, confirming the success of the data leakage correction and zero-shot alignment.
+  - **Median Error:** ~241.78 km
+  - **Accuracy @ 1km:** ~13.05%
+  - **Accuracy @ 25km:** ~32.17%
+  - **Accuracy @ 200km:** ~47.98%
+  - **Accuracy @ 750km:** ~66.53%
+  - **Accuracy @ 2500km:** ~82.28%
+- **Comparison:** These results mirror the established baseline metrics published in the original GeoCLIP research paper, confirming the success of the data leakage correction and zero-shot alignment.
 
-### 7. Scientific Reproducibility
+### 10. Scientific Reproducibility
 - **Python Version:** 3.10
 - **PyTorch Version:** 2.7.1+cu118
 - **CUDA Version:** 11.8
 - **Operating System:** Windows
 - **GeoCLIP Version:** Official Reference Codebase
 - **Commands Required to Reproduce:**
-  `ash
+  ` bash
   pip install seaborn
   python src/download_im2gps3k.py
   python src/evaluate_final.py
   `
 
-### 8. Repository Changes
-- src/evaluate_final.py: Modified to enforce independent gallery querying and eliminate data leakage. Solves the scientific issue of artificial accuracy inflation without changing model behavior.
-- pp.py: Modified to disable EXIF functionality automatically to enforce pure visual prediction. Added --forensic compatibility through sys.argv. Changes evaluation methodology, not model behavior.
-- src/predict.py: Added --forensic flag to rgparse to replicate the metadata control logic in the command-line interface. Changes methodology, not behavior.
-- src/download_im2gps3k.py: New script implemented to robustly download and extract the official ~3,000 real image evaluation set directly from HuggingFace, avoiding manual mock data usage.
+### 11. Repository Changes
+- `src/evaluate_final.py`: Modified to enforce independent gallery querying, eliminate data leakage, and trigger the automated reporting module (`src/reporting.py`).
+- `src/reporting.py`: Introduced to automatically compile IEEE-ready tables (LaTeX, CSV, Markdown) and render high-resolution plots (PNG, SVG, PDF).
+- `app.py`: Modified to disable EXIF functionality automatically to enforce pure visual prediction. Added `--forensic` compatibility through `sys.argv`.
+- `src/predict.py`: Added `--forensic` flag to `argparse` to replicate the metadata control logic in the command-line interface.
+- `src/download_im2gps3k.py`: Modified to cache datasets locally, validate dataset integrity, and clearly log state to avoid redundant downloading.
+- Dataset directory structure: Separated mock images (`tests/fixtures/mock/`) from official benchmark images (`data/im2gps3k/images_real/im2gps3ktest`) to ensure scientific integrity and prevent accidental data leakage.
 
-### 9. Research Decision
+### 12. Research Decision
 The project formally enforces **Zero-shot inference with official GeoCLIP pretrained weights**. 
 
-The experimental fine-tuning implementation has been explicitly sidelined, as the referenced 	rain.csv file is not a valid dataset for deep learning finetuning under strict supervision standards.
+The experimental fine-tuning implementation has been explicitly sidelined, as the referenced train.csv file is not a valid dataset for deep learning finetuning under strict supervision standards.
 
-### 10. Final Validation Checklist
+### 13. Final Validation Checklist
 - [x] Official GeoCLIP implementation used.
 - [x] Official pretrained weights used.
 - [x] Official Im2GPS3k benchmark used.
+- [x] Mock images strictly separated from evaluation data.
+- [x] Dataset provenance documented.
 - [x] No evaluation data leakage.
 - [x] EXIF disabled by default.
 - [x] Reproducible evaluation.

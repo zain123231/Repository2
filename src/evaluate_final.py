@@ -1,17 +1,17 @@
 import os
 import sys
+import time
 import torch
 import argparse
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 from tqdm import tqdm
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../geo-clip')))
 
 from geoclip.model.GeoCLIP import GeoCLIP
+from src.reporting import generate_report
 
 def haversine_distance(lat1, lon1, lat2, lon2):
     R = 6371.0
@@ -21,36 +21,6 @@ def haversine_distance(lat1, lon1, lat2, lon2):
     a = np.sin(dlat/2)**2 + np.cos(lat1) * np.cos(lat2) * np.sin(dlon/2)**2
     c = 2 * np.arcsin(np.sqrt(a))
     return R * c
-
-def plot_cdf(errors_km, output_path="results/cdf_curve.png"):
-    if len(errors_km) == 0:
-        return
-    sorted_errors = np.sort(errors_km)
-    p = 1. * np.arange(len(sorted_errors)) / (len(sorted_errors) - 1)
-    
-    plt.figure(figsize=(10, 6))
-    sns.set_style("whitegrid")
-    plt.plot(sorted_errors, p, marker='', color='b', linewidth=2.5, label='GeoCLIP Zero-Shot')
-    
-    thresholds = [1, 25, 200, 750, 2500]
-    for t in thresholds:
-        plt.axvline(x=t, color='r', linestyle='--', alpha=0.5)
-        
-    plt.xscale('symlog')
-    plt.xlim(left=0, right=20000)
-    plt.ylim(0, 1.05)
-    
-    plt.xlabel("Localization Error (km)", fontsize=14, fontweight='bold')
-    plt.ylabel("Fraction of Images", fontsize=14, fontweight='bold')
-    plt.title("Cumulative Distribution of Localization Error", fontsize=16, fontweight='bold')
-    plt.legend(loc="lower right", fontsize=12)
-    plt.grid(True, which="both", ls="-", alpha=0.2)
-    
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.savefig(output_path.replace(".png", ".pdf"), format='pdf', bbox_inches='tight')
-    plt.close()
-    print(f"[LOG] Saved CDF curve to {output_path}")
 
 def evaluate(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -69,6 +39,8 @@ def evaluate(args):
     errors_km = []
     
     print("[LOG] Running Zero-Shot Evaluation Loop...")
+    start_time = time.time()
+    
     for idx, row in tqdm(df.iterrows(), total=len(df)):
         # Handle Im2GPS3k csv format which uses IMG_ID or IMG_PATH
         img_filename = row['IMG_ID'] if 'IMG_ID' in row else row['IMG_PATH']
@@ -104,30 +76,16 @@ def evaluate(args):
             "ERROR_KM": dist
         })
         
+    end_time = time.time()
+    total_runtime_sec = end_time - start_time
+    
     errors_km = np.array(errors_km)
     if len(errors_km) == 0:
         print("[ERROR] No images were successfully processed!")
         return
 
-    median_error = np.median(errors_km)
-    
-    print("\n" + "="*40)
-    print("EVALUATION RESULTS (Official Im2GPS3k)")
-    print("="*40)
-    print(f"Median Error: {median_error:.2f} km")
-    
-    thresholds = [1, 25, 200, 750, 2500]
-    for t in thresholds:
-        acc = np.mean(errors_km <= t) * 100
-        print(f"Acc @ {t}km : {acc:.2f}%")
-        
-    results_df = pd.DataFrame(results)
-    os.makedirs("results", exist_ok=True)
-    out_csv = "results/geoclip_im2gps3k.csv"
-    results_df.to_csv(out_csv, index=False)
-    print(f"\n[LOG] Saved detailed predictions to {out_csv}")
-    
-    plot_cdf(errors_km)
+    # Trigger automated scientific reporting
+    generate_report(errors_km, results, total_runtime_sec)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
