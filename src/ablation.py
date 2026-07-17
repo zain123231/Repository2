@@ -18,7 +18,12 @@ def evaluate_variants(model, device="cpu"):
     # Load real dataset
     print("[LOG] Loading Global FAISS Index and cities...")
     cities_df = pd.read_csv("data/global_cities.csv", low_memory=False)
-    index = faiss.read_index("data/global_index.faiss")
+    global_index_path = "data/global_index.faiss"
+    if os.path.exists(global_index_path):
+        index = faiss.read_index(global_index_path)
+    else:
+        print("[ERROR] FAISS index not found. Run build_global_index.py first.")
+        sys.exit(1)
     
     engine = InferenceEngine(model, device, index, cities_df)
     
@@ -26,14 +31,22 @@ def evaluate_variants(model, device="cpu"):
     engine.ocr_reader = easyocr.Reader(['en', 'ar'], gpu=torch.cuda.is_available())
     
     print("[LOG] Loading Test Dataset...")
-    test_df = pd.read_csv("data/im2gps3k_test.csv")
-    img_dir = "data/im2gps3k/images"
+
+    print("[LOG] Loading Test Dataset...")
+    if os.path.exists("data/im2gps3k_test.csv"):
+        test_df = pd.read_csv("data/im2gps3k_test.csv")
+    else:
+        test_df = pd.read_csv("data/im2gps3k.csv")
+    img_dir = "data/im2gps3k/im2gps3ktest/im2gps3ktest"
     
     variants = ["A1", "A2", "A3", "A4"]
     systems_results = {v: [] for v in variants}
     
     for idx, row in test_df.iterrows():
-        img_path = os.path.join(img_dir, str(row.get('IMG_PATH', f"{row.get('IMG_ID')}.jpg")))
+        img_id = str(row.get('IMG_ID', ''))
+        img_path = os.path.join(img_dir, str(row.get('IMG_PATH', f"{img_id}.jpg")))
+        if not os.path.exists(img_path):
+            img_path = os.path.join(img_dir, img_id)
         if not os.path.exists(img_path):
             continue
             

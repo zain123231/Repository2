@@ -21,14 +21,46 @@ def load_models_and_index():
     model = GeoCLIP().to(device)
     model.eval()
     
-    global_index = faiss.read_index("data/global_index.faiss")
     global_cities = pd.read_csv("data/global_cities.csv")
+    if os.path.exists("data/global_index.faiss"):
+        global_index = faiss.read_index("data/global_index.faiss")
+    else:
+        import numpy as np
+        coords = np.stack([global_cities['LAT'].values, global_cities['LON'].values], axis=1)
+        coords_tensor = torch.tensor(coords, dtype=torch.float32)
+        batch_size = 1024
+        features_list = []
+        with torch.no_grad():
+            for i in range(0, len(coords_tensor), batch_size):
+                batch = coords_tensor[i:i+batch_size].to(device)
+                feats = model.location_encoder(batch)
+                feats = torch.nn.functional.normalize(feats, dim=-1)
+                features_list.append(feats.cpu().numpy())
+        all_features = np.vstack(features_list)
+        global_index = faiss.IndexFlatIP(512)
+        global_index.add(all_features)
     
     iraq_index = None
     iraq_cities = None
-    if os.path.exists("data/iraq_index.faiss"):
-        iraq_index = faiss.read_index("data/iraq_index.faiss")
+    if os.path.exists("data/iraq_locations.csv"):
         iraq_cities = pd.read_csv("data/iraq_locations.csv")
+        if os.path.exists("data/iraq_index.faiss"):
+            iraq_index = faiss.read_index("data/iraq_index.faiss")
+        else:
+            import numpy as np
+            batch_size = 1024
+            coords_iq = np.stack([iraq_cities['LAT'].values, iraq_cities['LON'].values], axis=1)
+            coords_iq_tensor = torch.tensor(coords_iq, dtype=torch.float32)
+            features_list_iq = []
+            with torch.no_grad():
+                for i in range(0, len(coords_iq_tensor), batch_size):
+                    batch = coords_iq_tensor[i:i+batch_size].to(device)
+                    feats = model.location_encoder(batch)
+                    feats = torch.nn.functional.normalize(feats, dim=-1)
+                    features_list_iq.append(feats.cpu().numpy())
+            all_features_iq = np.vstack(features_list_iq)
+            iraq_index = faiss.IndexFlatIP(512)
+            iraq_index.add(all_features_iq)
 
     transform = transforms.Compose([
         transforms.Resize((224, 224)),

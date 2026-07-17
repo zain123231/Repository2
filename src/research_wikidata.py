@@ -2,6 +2,7 @@ import os
 import requests
 import time
 import pandas as pd
+import numpy as np
 from tqdm import tqdm
 import math
 
@@ -166,7 +167,7 @@ def main():
                 
         filtered_candidates.append(cand)
         
-    print(f"[LOG] After geographic filtering (≥{MIN_DISTANCE_KM}km), {len(filtered_candidates)} candidates remain.")
+    print(f"[LOG] After geographic filtering (>={MIN_DISTANCE_KM}km), {len(filtered_candidates)} candidates remain.")
     
     # Fetch Metadata
     print("[LOG] Fetching Authors & Licenses from Commons API...")

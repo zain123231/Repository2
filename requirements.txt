@@ -12,3 +12,4 @@ seaborn
 tqdm
 tabulate
 pytest
+geopandas==0.14.4

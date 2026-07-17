@@ -68,6 +68,11 @@ def evaluate_image_retrieval(query_csv, query_dir, ref_csv, ref_dir):
         return processor(images=img, return_tensors="pt")["pixel_values"].squeeze(0)
     
     print("[LOG] Loading Reference Gallery...")
+    if not os.path.exists(ref_csv):
+        print(f"[WARNING] {ref_csv} not found! Falling back to data/reference_meta.csv")
+        ref_csv = "data/reference_meta.csv"
+        ref_dir = "data/reference_images"
+    
     ref_df = pd.read_csv(ref_csv)
     ref_paths = [os.path.join(ref_dir, str(row.get('IMG_PATH', row.get('IMG_ID', '')))) for _, row in ref_df.iterrows()]
     # Fallback to appending .jpg if not there

@@ -62,7 +62,7 @@ def build_iraq_index():
     lons = df["LON"].values
     coords = np.stack([lats, lons], axis=1) # (N, 2)
     
-    batch_size = 4096
+    batch_size = 1024
     num_batches = int(np.ceil(len(coords) / batch_size))
     
     print(f"[LOG] Generating embeddings for {len(coords)} locations in Iraq...")

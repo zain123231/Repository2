@@ -32,26 +32,17 @@ def evaluate_all(csv_file, img_dir, global_cities_path):
         print("[WARNING] No trained checkpoint found. Using baseline weights.")
     model.eval()
     
-    # 2. Build FAISS Index for the Gallery
+    # 2. Load FAISS Index for the Gallery
     print("[LOG] Loading Global Cities...")
     cities_df = pd.read_csv(global_cities_path, low_memory=False)
     
-    coords = np.stack([cities_df['LAT'].values, cities_df['LON'].values], axis=1)
-    coords_tensor = torch.tensor(coords, dtype=torch.float32)
-    
-    print("[LOG] Building FAISS Index...")
-    batch_size = 10000
-    features_list = []
-    with torch.no_grad():
-        for i in range(0, len(coords_tensor), batch_size):
-            batch = coords_tensor[i:i+batch_size].to(device)
-            feats = model.location_encoder(batch)
-            feats = torch.nn.functional.normalize(feats, dim=-1)
-            features_list.append(feats.cpu().numpy())
-            
-    all_features = np.vstack(features_list)
-    index = faiss.IndexFlatL2(512)
-    index.add(all_features)
+    global_index_path = "data/global_index.faiss"
+    if os.path.exists(global_index_path):
+        print(f"[LOG] Loading existing FAISS Index from {global_index_path}...")
+        index = faiss.read_index(global_index_path)
+    else:
+        print(f"[ERROR] FAISS index not found at {global_index_path}. Please run src/build_global_index.py first.")
+        sys.exit(1)
     
     # Load OCR Reader for A4
     import easyocr
@@ -70,7 +61,13 @@ def evaluate_all(csv_file, img_dir, global_cities_path):
     print(f"[LOG] Evaluating on {len(test_df)} images...")
     
     for idx, row in tqdm(test_df.iterrows(), total=len(test_df)):
-        img_path = os.path.join(img_dir, row['IMG_PATH']) if 'IMG_PATH' in row else os.path.join(img_dir, f"{row['IMG_ID']}.jpg")
+        img_id = str(row['IMG_ID'])
+        if img_id.endswith('.jpg'):
+            img_filename = img_id
+        else:
+            img_filename = f"{img_id}.jpg"
+            
+        img_path = os.path.join(img_dir, row.get('IMG_PATH', img_filename))
         if not os.path.exists(img_path):
             continue
             

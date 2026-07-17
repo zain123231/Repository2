@@ -58,9 +58,9 @@ def build_global_index():
     df = download_and_extract_geonames()
     
     # --- ADD DENSE GLOBAL GRID ---
-    print("[LOG] Generating Dense Global Grid (0.2 degree resolution)...")
-    lats_grid = np.arange(-90, 90, 0.2)
-    lons_grid = np.arange(-180, 180, 0.2)
+    print("[LOG] Generating Dense Global Grid (0.5 degree resolution)...")
+    lats_grid = np.arange(-90, 90, 0.5)
+    lons_grid = np.arange(-180, 180, 0.5)
     lon_mesh, lat_mesh = np.meshgrid(lons_grid, lats_grid)
     
     grid_lats = lat_mesh.flatten()
@@ -75,7 +75,15 @@ def build_global_index():
         "CountryCode": ["GRID"] * len(grid_lats)
     })
     
+    if "CountryCode" in df.columns:
+        df["CountryCode"] = df["CountryCode"].astype(str)
+        df = df[df["CountryCode"] != "GRID"]
+        
     df = pd.concat([df, grid_df], ignore_index=True)
+    
+    # Drop duplicates to absolutely prevent uncontrolled growth
+    df = df.drop_duplicates(subset=['LAT', 'LON'])
+    
     print(f"[LOG] Total coordinates (Cities + Grid): {len(df)}")
     
     # Save the combined DataFrame
@@ -106,7 +114,7 @@ def build_global_index():
     print(f"[LOG] Generating embeddings for {train_sample_size} training samples...")
     train_coords = coords[:train_sample_size]
     
-    batch_size = 4096
+    batch_size = 1024
     train_features = []
     
     with torch.no_grad():

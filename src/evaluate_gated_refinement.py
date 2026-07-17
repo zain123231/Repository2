@@ -26,7 +26,14 @@ def evaluate_gated_refinement(val_csv, img_dir, global_cities_path):
     model.eval()
     
     cities_df = pd.read_csv(global_cities_path, low_memory=False)
-    index = faiss.read_index("data/global_index.faiss")
+    global_index_path = "data/global_index.faiss"
+    if os.path.exists(global_index_path):
+        print(f"[LOG] Loading existing FAISS Index from {global_index_path}...")
+        index = faiss.read_index(global_index_path)
+    else:
+        print(f"[ERROR] FAISS index not found at {global_index_path}. Please run src/build_global_index.py first.")
+        import sys
+        sys.exit(1)
     
     engine = InferenceEngine(model, device, index, cities_df)
     

@@ -5,8 +5,12 @@ import numpy as np
 import pandas as pd
 import faiss
 from tqdm import tqdm
-import geopandas as gpd
-from shapely.geometry import Point
+try:
+    import geopandas as gpd
+    from shapely.geometry import Point
+    HAS_GEOPANDAS = True
+except ImportError:
+    HAS_GEOPANDAS = False
 
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -16,7 +20,7 @@ def build_index(model, device, lats, lons, output_faiss):
     coords = np.stack([lats, lons], axis=1)
     coords_tensor = torch.tensor(coords, dtype=torch.float32)
     
-    batch_size = 10000
+    batch_size = 1024
     features_list = []
     
     print(f"Building index for {len(coords)} points...")
@@ -38,6 +42,10 @@ def is_on_land(lons, lats):
     """
     Check if coordinates are on land using Geopandas Natural Earth lowres dataset.
     """
+    if not HAS_GEOPANDAS:
+        print("[WARNING] geopandas not installed! Skipping land mask and using full grid.")
+        return np.ones(len(lons), dtype=bool)
+
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
     # Merge all land geometries into a single multipolygon for faster checking
     land_geom = world.geometry.unary_union

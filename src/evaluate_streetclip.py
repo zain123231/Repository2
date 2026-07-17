@@ -41,7 +41,7 @@ def evaluate_streetclip(dataset_dir: str, metadata_csv: str, cities_csv: str, mo
     cities_df = pd.read_csv(cities_csv)
     
     # Pre-compute country prompts
-    unique_countries = cities_df['country'].unique().tolist()
+    unique_countries = cities_df['CountryCode'].unique().tolist()
     country_prompts = [f"a street photo taken in {country}" for country in unique_countries]
     print(f"[LOG] Encoded {len(unique_countries)} unique countries.")
     
