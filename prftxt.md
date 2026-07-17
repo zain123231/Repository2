@@ -334,14 +334,7 @@ $$ L_{embedding} = \text{MLP}(\text{concat}(\sin(lat), \cos(lat), \sin(lon), \co
 *Document automatically generated for academic submission standards. Project: GeoCLIP AI Locator.*
 
 
-=========================
-SECTION 16
-Scientific Validation and Research Compliance
-
-
-=========================
-
-## Scientific Validation and Research Compliance
+## 16. Scientific Validation and Research Compliance
 
 ### 1. Official GeoCLIP Alignment
 The project currently utilizes the official GeoCLIP reference implementation. To preserve scientific validity, the core components located under the geoclip/ package (including the CLIP backbone, ImageEncoder, LocationEncoder, and the predict() function) remain entirely unedited and identical to the original implementation. The project-specific extensions are strictly contained within independent modules ( app.py, src/predict.py, src/evaluate_final.py), which wrap around the official inference logic without altering the neural architecture or pretrained weights.
@@ -465,3 +458,46 @@ The experimental fine-tuning implementation has been explicitly sidelined, as th
 - [x] Reproducible evaluation.
 - [x] No fabricated datasets.
 - [x] No fabricated benchmark results.
+
+
+## 17. Supplementary Scientific Enhancements & Updates
+
+### 1. Core Fixes & System Stability
+- **`app.py`:**
+  - Corrected image normalization parameters to match the official CLIP standard `(mean=[0.4814, 0.4578, 0.4082], std=[0.2686, 0.2613, 0.2757])` instead of the legacy ImageNet parameters.
+  - Fixed EXIF metadata extraction to strictly parse the raw image bytes prior to `convert("RGB")` operations.
+  - Enhanced the UI to dynamically display calibrated Confidence Scores when applicable.
+- **`src/dataset.py`:**
+  - Implemented a recursive fallback mechanism `__getitem__` to safely skip corrupted images during iteration, preventing dataloader crashes and silent dataset poisoning.
+- **`src/visualize.py`:**
+  - Patched a significant data leakage issue where evaluating non-global coordinates historically generated an in-distribution random reference gallery. It now strictly enforces the usage of the global FAISS index.
+
+### 2. Ablation Study Pipeline
+- **`src/ablation.py`:**
+  - Completely rewrote the script to evaluate system variants (A1-A4) natively on the real `Im2GPS3k` dataset instead of utilizing mock data. The output is now directly linked to `reporting.py` for automated, publication-ready table generation.
+
+### 3. Confidence-Gated Refinement
+- **`src/evaluate_gated_refinement.py` (New File):**
+  - Introduced a conditional threshold logic that gates Micro-Grid refinement based on the geographic dispersion of the top-k coarse candidates within a radius `R`. Included a parameter sweep functionality over `R` and `top-k` against an independent validation set.
+
+### 4. Independent Iraqi Test Set
+- **`src/research_wikidata.py` (New File):**
+  - Developed a standalone SPARQL crawler targeting Wikidata to fetch geolocalized imagery specific to Iraq.
+  - Implemented an automated spatial filtering system ensuring no test candidate falls within a 1.0 km proximity of any training coordinate, mathematically preventing spatial data leakage.
+  - Integrated Wikimedia Commons API resolution to fetch explicit licensing and author metadata for compliance.
+
+### 5. Gallery Composition Study
+- **`build_galleries.py` & `evaluate_galleries.py` (New Files):**
+  - Developed scripts to construct and evaluate four diverse gallery configurations: Pure regular grid (employing a Natural Earth mask to eliminate oceanic coordinates), Raw GeoNames density, Population-weighted coordinates, and a Hybrid structure. Includes automated coverage map plotting.
+
+### 6. Cartography & Spatial Error Analysis
+- **`src/spatial_analysis.py`:**
+  - Standardized geographic plot projections utilizing Equal Earth / Robinson mappings.
+  - Integrated automated reverse-geocoding via `geopandas` to generate performance breakdowns by Continent.
+  - Enabled Urban vs. Rural analysis by dynamically matching predictions against `global_cities.csv` feature classes.
+
+### 7. Reproducibility & Automation
+- Removed all inline titles from generated plots via `reporting.py` to enforce strict academic compliance (where captions are required).
+- Enforced strict deterministic seeding (`seed(42)`) across all evaluation scripts.
+- Orchestrated the complete pipeline array via an end-to-end `make_all.ps1` execution script.
+- Bootstrapped and locked the environment using a version-controlled Git repository.
