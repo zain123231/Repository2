@@ -89,7 +89,7 @@ For an in-depth explanation of the models, the `std::bad_alloc` memory leak solu
 ## Scientific Validation and Research Compliance
 
 ### 1. Official GeoCLIP Alignment
-The project currently utilizes the official GeoCLIP reference implementation. To preserve scientific validity, the core components located under the geoclip/ package (including the CLIP backbone, ImageEncoder, LocationEncoder, and the predict() function) remain entirely unedited and identical to the original implementation. The project-specific extensions are strictly contained within independent modules (pp.py, src/predict.py, src/evaluate_final.py), which wrap around the official inference logic without altering the neural architecture or pretrained weights.
+The project currently utilizes the official GeoCLIP reference implementation. To preserve scientific validity, the core components located under the geoclip/ package (including the CLIP backbone, ImageEncoder, LocationEncoder, and the predict() function) remain entirely unedited and identical to the original implementation. The project-specific extensions are strictly contained within independent modules (app.py, src/predict.py, src/evaluate_final.py), which wrap around the official inference logic without altering the neural architecture or pretrained weights.
 
 ### 2. Dataset Organization and Provenance
 - **Official Dataset Name:** Im2GPS3k
@@ -180,11 +180,11 @@ The evaluation pipeline natively includes an automated scientific reporting syst
 - **Operating System:** Windows
 - **GeoCLIP Version:** Official Reference Codebase
 - **Commands Required to Reproduce:**
-  ` ash
+  ```bash
   pip install seaborn
   python src/download_im2gps3k.py
   python src/evaluate_final.py
-  `
+  ```
 
 ### 11. Repository Changes
 - `src/evaluate_final.py`: Modified to enforce independent gallery querying, eliminate data leakage, and trigger the automated reporting module (`src/reporting.py`).
@@ -197,7 +197,7 @@ The evaluation pipeline natively includes an automated scientific reporting syst
 ### 12. Research Decision
 The project formally enforces **Zero-shot inference with official GeoCLIP pretrained weights**. 
 
-The experimental fine-tuning implementation has been explicitly sidelined, as the referenced 	rain.csv file is not a valid dataset for deep learning finetuning under strict supervision standards.
+The experimental fine-tuning implementation has been explicitly sidelined, as the referenced train.csv file is not a valid dataset for deep learning finetuning under strict supervision standards.
 
 ### 13. Final Validation Checklist
 - [x] Official GeoCLIP implementation used.
