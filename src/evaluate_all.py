@@ -32,28 +32,14 @@ def evaluate_all(csv_file, img_dir, global_cities_path):
         print("[WARNING] No trained checkpoint found. Using baseline weights.")
     model.eval()
     
-    # 2. Load FAISS Index for the Gallery
-    print("[LOG] Loading Global Cities...")
-    cities_df = pd.read_csv(global_cities_path, low_memory=False)
-    
-    global_index_path = "data/global_index.faiss"
-    if os.path.exists(global_index_path):
-        print(f"[LOG] Loading existing FAISS Index from {global_index_path}...")
-        index = faiss.read_index(global_index_path)
-    else:
-        print(f"[ERROR] FAISS index not found at {global_index_path}. Please run src/build_global_index.py first.")
-        sys.exit(1)
-    
-    # Load OCR Reader for A4
-    import easyocr
-    print("[LOG] Loading OCR Reader...")
-    ocr_reader = easyocr.Reader(['en', 'ar'], gpu=torch.cuda.is_available())
-    
-    engine = InferenceEngine(model, device, index, cities_df, ocr_reader)
+    # 2. We skip the custom global FAISS index as per advisor review
+    # The original GeoCLIP model.predict() uses its own coordinates_100K.csv automatically.
+    print("[LOG] Using official GeoCLIP coordinates_100K gallery for evaluation.")
     
     # 3. Load Test Data
     test_df = pd.read_csv(csv_file)
-    variants = ["A1", "A2", "A3", "A4"]
+    # Postpone ablation variants (A2, A3, A4) until A1 reaches gateway numbers
+    variants = ["A1"] 
     
     systems_results = {v: [] for v in variants}
     detailed_csv_rows = []
@@ -72,13 +58,12 @@ def evaluate_all(csv_file, img_dir, global_cities_path):
             continue
             
         try:
-            image = Image.open(img_path).convert("RGB")
-            
             for var in variants:
-                preds = engine.predict(image, variant=var, top_k=1)
-                if preds:
-                    pred_lat = preds[0]['lat']
-                    pred_lon = preds[0]['lon']
+                if var == "A1":
+                    # Use official model.predict() for A1 baseline
+                    top_pred_gps, top_pred_prob = model.predict(img_path, top_k=1)
+                    pred_lat, pred_lon = top_pred_gps[0]
+                    
                     dist = haversine_distance(
                         torch.tensor([[pred_lat, pred_lon]], dtype=torch.float32),
                         torch.tensor([[row['LAT'], row['LON']]], dtype=torch.float32)
@@ -86,17 +71,16 @@ def evaluate_all(csv_file, img_dir, global_cities_path):
                     
                     systems_results[var].append({'error': dist})
                     
-                    if var == "A4": # Save A4 as the detailed prediction
-                        detailed_csv_rows.append({
-                            'IMG_PATH': os.path.basename(img_path),
-                            'TRUE_LAT': row['LAT'],
-                            'TRUE_LON': row['LON'],
-                            'PRED_LAT': pred_lat,
-                            'PRED_LON': pred_lon,
-                            'ERROR_KM': dist,
-                            'CITY': preds[0]['name'],
-                            'COUNTRY': preds[0]['country']
-                        })
+                    detailed_csv_rows.append({
+                        'IMG_PATH': os.path.basename(img_path),
+                        'TRUE_LAT': row['LAT'],
+                        'TRUE_LON': row['LON'],
+                        'PRED_LAT': pred_lat.item() if hasattr(pred_lat, 'item') else pred_lat,
+                        'PRED_LON': pred_lon.item() if hasattr(pred_lon, 'item') else pred_lon,
+                        'ERROR_KM': dist,
+                        'CITY': "GeoCLIP 100K Point",
+                        'COUNTRY': "Unknown"
+                    })
         except Exception as e:
             print(f"[ERROR] Failed {img_path}: {e}")
             

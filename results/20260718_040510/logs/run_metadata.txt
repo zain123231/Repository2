@@ -1,5 +1,5 @@
 Command: src/evaluate_all.py --csv data/im2gps3k.csv --img-dir data/im2gps3k/im2gps3ktest/im2gps3ktest --cities data/global_cities.csv
-Git Hash: 381f055
+Git Hash: 385747b
 Seed: 42 (Fixed)
 Evaluated N: 2997
 

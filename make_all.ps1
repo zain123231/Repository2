@@ -6,11 +6,16 @@ Write-Host "==========================================================" -Foregro
 Write-Host "GeoCLIP Scientific Evaluation Pipeline (Robust Mode)" -ForegroundColor Green
 Write-Host "==========================================================" -ForegroundColor Green
 
-Write-Host "`n[LOG] Ensuring psutil is installed for system monitoring..." -ForegroundColor Yellow
-python -m pip install psutil --quiet
+Write-Host "`n[LOG] Setting up clean virtual environment (.venv)..." -ForegroundColor Yellow
+if (-not (Test-Path ".venv")) {
+    python -m venv .venv
+}
+.venv\Scripts\python.exe -m pip install --upgrade pip --quiet
+.venv\Scripts\python.exe -m pip install -r requirements.txt --quiet
+.venv\Scripts\python.exe -m pip install psutil --quiet
 
 Write-Host "`n[LOG] Starting robust Python orchestrator..." -ForegroundColor Cyan
-python run_pipeline.py
+.venv\Scripts\python.exe run_pipeline.py
 
 if ($LASTEXITCODE -eq 0) {
     Write-Host "`n==========================================================" -ForegroundColor Green

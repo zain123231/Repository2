@@ -9,35 +9,36 @@ import gc
 STAGES = [
     {
         "name": "Evaluate A1-A4 Variants",
-        "cmd": ["python", "src/evaluate_all.py", "--csv", "data/im2gps3k.csv", "--img-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--cities", "data/global_cities.csv"]
+        "cmd": [sys.executable, "src/evaluate_all.py", "--csv", "data/im2gps3k.csv", "--img-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--cities", "data/global_cities.csv"]
     },
-    {
-        "name": "Ablation Study",
-        "cmd": ["python", "src/ablation.py"]
-    },
+    # Temporarily disable Ablation Study as per advisor review
+    # {
+    #     "name": "Ablation Study",
+    #     "cmd": [sys.executable, "src/ablation.py"]
+    # },
     {
         "name": "Build Galleries",
-        "cmd": ["python", "src/build_galleries.py", "--cities", "data/global_cities.csv"]
+        "cmd": [sys.executable, "src/build_galleries.py", "--cities", "data/global_cities.csv"]
     },
     {
         "name": "Evaluate Galleries",
-        "cmd": ["python", "src/evaluate_galleries.py", "--csv", "data/im2gps3k.csv", "--img-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest"]
+        "cmd": [sys.executable, "src/evaluate_galleries.py", "--csv", "data/im2gps3k.csv", "--img-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest"]
     },
     {
         "name": "Confidence-Gated Refinement Sweep",
-        "cmd": ["python", "src/evaluate_gated_refinement.py", "--val-csv", "data/val.csv", "--img-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--cities", "data/global_cities.csv"]
+        "cmd": [sys.executable, "src/evaluate_gated_refinement.py", "--val-csv", "data/val.csv", "--img-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--cities", "data/global_cities.csv"]
     },
     {
         "name": "StreetCLIP Zero-Shot Baseline",
-        "cmd": ["python", "src/evaluate_streetclip.py", "--csv", "data/im2gps3k.csv", "--data-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--cities", "data/global_cities.csv"]
+        "cmd": [sys.executable, "src/evaluate_streetclip.py", "--csv", "data/im2gps3k.csv", "--data-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--cities", "data/global_cities.csv"]
     },
     {
         "name": "Image-to-Image Retrieval Baseline",
-        "cmd": ["python", "src/evaluate_retrieval.py", "--query-csv", "data/im2gps3k.csv", "--query-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--ref-csv", "data/mp16_train.csv", "--ref-dir", "data/mp16/images"]
+        "cmd": [sys.executable, "src/evaluate_retrieval.py", "--query-csv", "data/im2gps3k.csv", "--query-dir", "data/im2gps3k/im2gps3ktest/im2gps3ktest", "--ref-csv", "data/mp16_train.csv", "--ref-dir", "data/mp16/images"]
     },
     {
         "name": "Processing Iraqi Dataset",
-        "cmd": ["python", "src/research_wikidata.py"]
+        "cmd": [sys.executable, "src/research_wikidata.py"]
     }
 ]
 
