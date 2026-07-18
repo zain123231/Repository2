@@ -38,16 +38,15 @@ def evaluate_gated_refinement(val_csv, img_dir, global_cities_path):
     engine = InferenceEngine(model, device, index, cities_df)
     
     if not os.path.exists(val_csv):
-        print(f"[WARNING] Validation CSV {val_csv} not found. Using a random subset of test set as mock validation.")
-        test_df = pd.read_csv("data/im2gps3k_test.csv") if os.path.exists("data/im2gps3k_test.csv") else pd.read_csv("data/im2gps3k.csv")
-        val_df = test_df.sample(n=min(500, len(test_df)), random_state=42)
+        raise FileNotFoundError(f"[ERROR] Validation CSV {val_csv} not found! Dataset isolation rule violated. Please build it first.")
     else:
         val_df = pd.read_csv(val_csv)
         
     print(f"[LOG] Validation set size: {len(val_df)}")
     
-    Rs = [50, 100, 500, 1000, 2000]
+    Rs = [50, 100, 500, 1000]
     top_ks = [2, 3, 5]
+    criteria_list = ["distance", "margin", "confidence", "dispersion"]
     
     results_grid = []
     
@@ -71,27 +70,45 @@ def evaluate_gated_refinement(val_csv, img_dir, global_cities_path):
             # Get max top_k needed
             coarse_candidates = engine.coarse_search(img_feature, top_k=max(top_ks))
             target = torch.tensor([[row['LAT'], row['LON']]], dtype=torch.float32)
+            
+            # Precompute refinement for dispersion/confidence checks
+            refined_candidates = engine.micro_grid_refinement(img_feature, coarse_candidates)
+            
             val_data.append({
                 'feature': img_feature,
                 'coarse': coarse_candidates,
+                'refined': refined_candidates,
                 'target': target
             })
         except Exception as e:
             pass
             
-    print("[LOG] Sweeping R and top-k...")
-    for k in top_ks:
+    print("[LOG] Sweeping gating criteria, R, and top-k...")
+    for crit in criteria_list:
+      for k in top_ks:
         for r in Rs:
             errors = []
             num_refined = 0
             for item in val_data:
                 coarse_candidates = item['coarse'][:k]
-                should_refine = engine.conditional_refinement(coarse_candidates, radius_km=r)
+                
+                # Check criteria
+                should_refine = False
+                if crit == "distance":
+                    should_refine = engine.conditional_refinement(coarse_candidates, radius_km=r)
+                elif crit == "margin":
+                    # Margin between top 1 and top 2 coarse distance/similarity
+                    should_refine = abs(coarse_candidates[1][4] - coarse_candidates[0][4]) < (r / 1000.0)
+                elif crit == "confidence":
+                    # Softmax prob of top network
+                    should_refine = item['refined'][0]['confidence_prob'] < (r / 10.0) # r acting as threshold sweep
+                elif crit == "dispersion":
+                    # Dispersion of top scores in grid (proxy: difference between rank 1 and 5 in refined grid)
+                    should_refine = (item['refined'][0]['score'] - item['refined'][min(4, len(item['refined'])-1)]['score']) < (r / 1000.0)
                 
                 if should_refine:
                     num_refined += 1
-                    refined_results = engine.micro_grid_refinement(item['feature'], coarse_candidates)
-                    pred_lat, pred_lon = refined_results[0]['lat'], refined_results[0]['lon']
+                    pred_lat, pred_lon = item['refined'][0]['lat'], item['refined'][0]['lon']
                 else:
                     pred_lat, pred_lon = coarse_candidates[0][0], coarse_candidates[0][1]
                     
@@ -99,14 +116,16 @@ def evaluate_gated_refinement(val_csv, img_dir, global_cities_path):
                 dist = haversine_distance(pred_tensor, item['target']).item()
                 errors.append(dist)
                 
+            if not errors: continue
             med_error = np.median(errors)
             acc_1km = np.mean(np.array(errors) <= 1) * 100
             acc_2500km = np.mean(np.array(errors) <= 2500) * 100
             pct_refined = (num_refined / len(val_data)) * 100
             
             results_grid.append({
+                'Criterion': crit,
                 'top_k': k,
-                'R_km': r,
+                'Threshold/R': r,
                 'Refined_%': pct_refined,
                 'Median_Error': med_error,
                 'Acc@1km': acc_1km,

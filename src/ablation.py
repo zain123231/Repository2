@@ -50,20 +50,39 @@ def evaluate_variants(model, device="cpu"):
         if not os.path.exists(img_path):
             continue
             
-        try:
-            img = Image.open(img_path).convert("RGB")
-            target = torch.tensor([[row['LAT'], row['LON']]], dtype=torch.float32)
-            
-            for var in variants:
-                preds = engine.predict(img, variant=var, top_k=1)
-                if preds:
-                    pred_lat = preds[0]['lat']
-                    pred_lon = preds[0]['lon']
+        target = torch.tensor([[row['LAT'], row['LON']]], dtype=torch.float32)
+        
+        for var in variants:
+            try:
+                if var == "A1":
+                    # Official GeoCLIP Baseline (Immutable)
+                    # Use official predict method that relies on coordinates_100K.csv
+                    top_pred_gps, _ = model.predict(img_path, top_k=1)
+                    pred_lat = top_pred_gps[0][0].item()
+                    pred_lon = top_pred_gps[0][1].item()
                     pred_tensor = torch.tensor([[pred_lat, pred_lon]], dtype=torch.float32)
                     dist = haversine_distance(pred_tensor, target).item()
                     systems_results[var].append({'error': dist})
-        except Exception as e:
-            pass
+                else:
+                    # A2, A3, A4 Variants (Custom Engine with 170K global index)
+                    img = Image.open(img_path).convert("RGB")
+                    preds = engine.predict(
+                        img, 
+                        variant=var, 
+                        top_k=1, 
+                        conditional_refine=True, 
+                        refinement_mode="centroid",  # From Task 2 sweep
+                        gating_criterion="dispersion", # From Task 1 sweep
+                        refine_radius=500
+                    )
+                    if preds:
+                        pred_lat = preds[0]['lat']
+                        pred_lon = preds[0]['lon']
+                        pred_tensor = torch.tensor([[pred_lat, pred_lon]], dtype=torch.float32)
+                        dist = haversine_distance(pred_tensor, target).item()
+                        systems_results[var].append({'error': dist})
+            except Exception as e:
+                print(f"[ERROR] Variant {var} failed on image {img_id}: {e}", file=sys.stderr)
             
     from src.reporting import generate_report
     generate_report(systems_results, len(test_df), dataset_name="Im2GPS3k")

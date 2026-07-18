@@ -98,55 +98,113 @@ class InferenceEngine:
         # If they disagree, we might not refine
         return dist <= radius_km
 
-    def micro_grid_refinement(self, img_feature, coarse_candidates, grid_steps=40, offset_range=0.5):
+    def micro_grid_refinement(self, img_feature, coarse_candidates, grid_steps=40, offset_range=0.5, mode="argmax", temperature=1.0):
         """Perform Micro-Grid refinement around coarse candidates with geometric correction."""
         results = []
         
         for rank, (coarse_lat, coarse_lon, name, country, dist) in enumerate(coarse_candidates):
-            # Geometric Correction: Longitude offset should be divided by cos(latitude)
-            lat_rad = math.radians(coarse_lat)
-            # Clip lat_rad to avoid division by zero near poles (e.g. max 89 degrees)
-            lat_rad = max(min(lat_rad, math.radians(89)), math.radians(-89))
-            cos_lat = math.cos(lat_rad)
-            lon_offset_range = offset_range / cos_lat
-            
-            lat_offsets = np.linspace(-offset_range, offset_range, grid_steps)
-            lon_offsets = np.linspace(-lon_offset_range, lon_offset_range, grid_steps)
-            
-            lat_grid, lon_grid = np.meshgrid(coarse_lat + lat_offsets, coarse_lon + lon_offsets)
-            micro_grid = np.vstack([lat_grid.ravel(), lon_grid.ravel()]).T
-            micro_grid_tensor = torch.tensor(micro_grid, dtype=torch.float32).to(self.device)
-            
-            with torch.no_grad():
-                loc_features = self.model.location_encoder(micro_grid_tensor)
-                loc_features = F.normalize(loc_features, dim=-1)
+            if mode == "multiscale":
+                scales = [0.5, 0.1, 0.02]
+                curr_lat, curr_lon = coarse_lat, coarse_lon
                 
-                logit_scale = self.model.logit_scale.exp()
-                similarity = logit_scale * (img_feature @ loc_features.T)
-                
-                # Softmax over all micro-grid points for confidence calibration
-                probs = F.softmax(similarity, dim=-1)
-                
-                best_local_idx = similarity.argmax().item()
-                best_local_score = similarity[0, best_local_idx].item()
-                best_local_prob = probs[0, best_local_idx].item()
-                best_local_coord = micro_grid[best_local_idx]
-                
+                for scale in scales:
+                    lat_rad = max(min(math.radians(curr_lat), math.radians(89)), math.radians(-89))
+                    cos_lat = math.cos(lat_rad)
+                    lon_offset_range = scale / cos_lat
+                    
+                    lat_offsets = np.linspace(-scale, scale, grid_steps)
+                    lon_offsets = np.linspace(-lon_offset_range, lon_offset_range, grid_steps)
+                    
+                    lat_grid, lon_grid = np.meshgrid(curr_lat + lat_offsets, curr_lon + lon_offsets)
+                    micro_grid = np.vstack([lat_grid.ravel(), lon_grid.ravel()]).T
+                    micro_grid_tensor = torch.tensor(micro_grid, dtype=torch.float32).to(self.device)
+                    
+                    with torch.no_grad():
+                        loc_features = self.model.location_encoder(micro_grid_tensor)
+                        loc_features = F.normalize(loc_features, dim=-1)
+                        
+                        logit_scale = self.model.logit_scale.exp()
+                        similarity = logit_scale * (img_feature @ loc_features.T)
+                        
+                        best_local_idx = similarity.argmax().item()
+                        curr_lat, curr_lon = micro_grid[best_local_idx]
+                        
+                        if scale == scales[-1]:
+                            probs = F.softmax(similarity, dim=-1)
+                            best_local_score = similarity[0, best_local_idx].item()
+                            best_local_prob = probs[0, best_local_idx].item()
+                            
                 results.append({
                     "name": name,
                     "country": country,
-                    "lat": best_local_coord[0],
-                    "lon": best_local_coord[1],
+                    "lat": curr_lat,
+                    "lon": curr_lon,
                     "score": best_local_score,
                     "confidence_prob": best_local_prob * 100.0,
                     "coarse_dist": dist
                 })
+
+            else:
+                lat_rad = max(min(math.radians(coarse_lat), math.radians(89)), math.radians(-89))
+                cos_lat = math.cos(lat_rad)
+                lon_offset_range = offset_range / cos_lat
+                
+                lat_offsets = np.linspace(-offset_range, offset_range, grid_steps)
+                lon_offsets = np.linspace(-lon_offset_range, lon_offset_range, grid_steps)
+                
+                lat_grid, lon_grid = np.meshgrid(coarse_lat + lat_offsets, coarse_lon + lon_offsets)
+                micro_grid = np.vstack([lat_grid.ravel(), lon_grid.ravel()]).T
+                micro_grid_tensor = torch.tensor(micro_grid, dtype=torch.float32).to(self.device)
+                
+                with torch.no_grad():
+                    loc_features = self.model.location_encoder(micro_grid_tensor)
+                    loc_features = F.normalize(loc_features, dim=-1)
+                    
+                    logit_scale = self.model.logit_scale.exp()
+                    similarity = logit_scale * (img_feature @ loc_features.T)
+                    
+                    if mode == "centroid":
+                        sim_scaled = similarity / temperature
+                        probs = F.softmax(sim_scaled, dim=-1)
+                        weights = probs[0].cpu().numpy()
+                        # Centroid logic
+                        best_lat = np.average(micro_grid[:, 0], weights=weights)
+                        best_lon = np.average(micro_grid[:, 1], weights=weights)
+                        best_local_score = similarity.max().item()
+                        best_local_prob = probs.max().item()
+                        
+                        results.append({
+                            "name": name,
+                            "country": country,
+                            "lat": best_lat,
+                            "lon": best_lon,
+                            "score": best_local_score,
+                            "confidence_prob": best_local_prob * 100.0,
+                            "coarse_dist": dist
+                        })
+                        
+                    else: # argmax
+                        probs = F.softmax(similarity, dim=-1)
+                        best_local_idx = similarity.argmax().item()
+                        best_local_score = similarity[0, best_local_idx].item()
+                        best_local_prob = probs[0, best_local_idx].item()
+                        best_local_coord = micro_grid[best_local_idx]
+                        
+                        results.append({
+                            "name": name,
+                            "country": country,
+                            "lat": best_local_coord[0],
+                            "lon": best_local_coord[1],
+                            "score": best_local_score,
+                            "confidence_prob": best_local_prob * 100.0,
+                            "coarse_dist": dist
+                        })
                 
         # Sort results by the new refined score (highest first)
         results.sort(key=lambda x: x['score'], reverse=True)
         return results
 
-    def predict(self, image, variant="A3", top_k=3, conditional_refine=False, refine_radius=500):
+    def predict(self, image, variant="A3", top_k=3, conditional_refine=False, refine_radius=500, refinement_mode="argmax", temperature=1.0, gating_criterion="distance"):
         """
         Main prediction method handling variants A1, A2, A3, A4.
         Returns a list of dictionaries with predictions.
@@ -171,11 +229,40 @@ class InferenceEngine:
         # 4. Refinement
         if use_micro_grid:
             should_refine = True
+            
+            # Since gating_criterion might need grid, we compute grid first if criterion is grid-based
             if conditional_refine:
-                should_refine = self.conditional_refinement(coarse_candidates, radius_km=refine_radius)
-                
-            if should_refine:
-                refined_results = self.micro_grid_refinement(img_feature, coarse_candidates)
+                if gating_criterion in ["confidence", "dispersion"]:
+                    # Must compute grid to know
+                    refined_results = self.micro_grid_refinement(img_feature, coarse_candidates, mode=refinement_mode, temperature=temperature)
+                    if gating_criterion == "confidence":
+                        should_refine = refined_results[0]['confidence_prob'] < (refine_radius / 10.0)
+                    elif gating_criterion == "dispersion":
+                        should_refine = (refined_results[0]['score'] - refined_results[min(4, len(refined_results)-1)]['score']) < (refine_radius / 1000.0)
+                        
+                    if should_refine:
+                        refined_results = refined_results[:top_k]
+                        for res in refined_results:
+                            res["variant"] = variant
+                            res["ocr_text"] = detected_texts
+                        return refined_results
+                else:
+                    if gating_criterion == "margin":
+                        should_refine = len(coarse_candidates) <= 1 or abs(coarse_candidates[1][4] - coarse_candidates[0][4]) < (refine_radius / 1000.0)
+                    else:
+                        should_refine = self.conditional_refinement(coarse_candidates, radius_km=refine_radius)
+                        
+                    if should_refine:
+                        refined_results = self.micro_grid_refinement(img_feature, coarse_candidates, mode=refinement_mode, temperature=temperature)
+                        # Cap to top_k
+                        refined_results = refined_results[:top_k]
+                        for res in refined_results:
+                            res["variant"] = variant
+                            res["ocr_text"] = detected_texts
+                        return refined_results
+            else:
+                # Always refine
+                refined_results = self.micro_grid_refinement(img_feature, coarse_candidates, mode=refinement_mode, temperature=temperature)
                 # Cap to top_k
                 refined_results = refined_results[:top_k]
                 for res in refined_results:

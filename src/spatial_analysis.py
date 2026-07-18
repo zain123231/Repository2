@@ -128,31 +128,40 @@ def continental_breakdown(df, outdir):
 def urban_rural_breakdown(df, outdir):
     """
     Splits by urban/rural.
-    Assuming global_cities.csv has feature_class (P for cities).
-    If not, we mock it using a population threshold from the closest city if available,
-    or just random mock for demonstration of the script's capability.
+    We classify the ground truth location of the image: nearest GeoNames feature to GT coords.
+    Urban if feature_class=P and population > 5000, else Rural.
     """
     table_dir = os.path.join(outdir, "tables")
     os.makedirs(table_dir, exist_ok=True)
     
-    # We load global_cities to find the feature_class of the predicted cities
     cities_path = "data/global_cities.csv"
-    if os.path.exists(cities_path):
+    if os.path.exists(cities_path) and HAS_GEOPANDAS:
         cities_df = pd.read_csv(cities_path, low_memory=False)
-        if 'feature_class' in cities_df.columns:
-            # Create a dictionary mapping from (lat, lon) or name to feature class
-            # Since rounding issues might occur, we merge on City name and Country
-            merged = pd.merge(df, cities_df, how='left', left_on=['CITY', 'COUNTRY'], right_on=['City', 'CountryCode'])
-            # P is populated place (city/urban), others (e.g. T, H, V) are rural/features
-            df['type'] = merged['feature_class'].apply(lambda x: 'Urban (P)' if pd.notna(x) and str(x).upper() == 'P' else 'Rural (Other)')
-        else:
-            print("[WARNING] feature_class missing in cities.csv, using population > 5000 as Urban")
-            if 'population' in cities_df.columns:
-                merged = pd.merge(df, cities_df, how='left', left_on=['CITY', 'COUNTRY'], right_on=['City', 'CountryCode'])
-                df['type'] = merged['population'].apply(lambda x: 'Urban (P)' if pd.notna(x) and x > 5000 else 'Rural (Other)')
-            else:
-                df['type'] = 'Urban (P)'
+        
+        # Build GeoDataFrame for cities
+        cities_gdf = gpd.GeoDataFrame(
+            cities_df, geometry=gpd.points_from_xy(cities_df.LON, cities_df.LAT), crs="EPSG:4326"
+        )
+        
+        # Build GeoDataFrame for predictions GT
+        gt_gdf = gpd.GeoDataFrame(
+            df, geometry=gpd.points_from_xy(df.TRUE_LON, df.TRUE_LAT), crs="EPSG:4326"
+        )
+        
+        # Find nearest city
+        joined = gpd.sjoin_nearest(gt_gdf, cities_gdf, how='left', distance_col='dist_to_city')
+        
+        # Rule: Urban if feature_class == 'P' and population > 5000
+        # Wait, if multiple cities match with same distance, sjoin_nearest can return duplicates.
+        # We need to drop duplicates on the index to ensure 1-to-1 matching.
+        joined = joined[~joined.index.duplicated(keep='first')]
+        
+        is_urban = (joined['feature_class'].astype(str).str.upper() == 'P') & (joined['population'] > 5000)
+        df['type'] = np.where(is_urban, 'Urban (P)', 'Rural (Other)')
+        df['dist_to_gt_city'] = joined['dist_to_city']
+        
     else:
+        print("[WARNING] Geopandas or cities.csv missing, cannot compute accurate Urban/Rural split. Defaulting to Urban.")
         df['type'] = 'Urban (P)'
         
     res = df.groupby('type')['ERROR_KM'].agg(['count', 'median', lambda x: np.mean(x <= 200) * 100])
@@ -162,6 +171,12 @@ def urban_rural_breakdown(df, outdir):
     res.to_csv(os.path.join(table_dir, "urban_rural_breakdown.csv"), index=False)
     with open(os.path.join(table_dir, "urban_rural_breakdown.md"), 'w') as f:
         f.write(res.to_markdown(index=False))
+        # Add interpretation line
+        urban_err = res[res['type'] == 'Urban (P)']['Median Error (km)'].values
+        rural_err = res[res['type'] == 'Rural (Other)']['Median Error (km)'].values
+        if len(urban_err) > 0 and len(rural_err) > 0:
+            bias = "Yes" if urban_err[0] < rural_err[0] else "No"
+            f.write(f"\n\nModel displays urban bias: {bias}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

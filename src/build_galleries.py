@@ -33,7 +33,7 @@ def build_index(model, device, lats, lons, output_faiss):
             features_list.append(feats.cpu().numpy())
             
     all_features = np.vstack(features_list)
-    index = faiss.IndexFlatL2(512)
+    index = faiss.IndexFlatIP(512)
     index.add(all_features)
     faiss.write_index(index, output_faiss)
     print(f"Saved FAISS index to {output_faiss}")
@@ -47,17 +47,15 @@ def is_on_land(lons, lats):
         return np.ones(len(lons), dtype=bool)
 
     world = gpd.read_file(gpd.datasets.get_path('naturalearth_lowres'))
-    # Merge all land geometries into a single multipolygon for faster checking
-    land_geom = world.geometry.unary_union
     
-    print("Filtering points using Natural Earth land mask...")
-    valid = []
-    for lon, lat in tqdm(zip(lons, lats), total=len(lons)):
-        if land_geom.contains(Point(lon, lat)):
-            valid.append(True)
-        else:
-            valid.append(False)
-    return np.array(valid)
+    print("Filtering points using Natural Earth land mask (vectorized)...")
+    df_pts = pd.DataFrame({'LON': lons, 'LAT': lats})
+    gdf_pts = gpd.GeoDataFrame(df_pts, geometry=gpd.points_from_xy(df_pts.LON, df_pts.LAT), crs=world.crs)
+    
+    joined = gpd.sjoin(gdf_pts, world, how="inner", predicate="intersects")
+    valid = np.zeros(len(lons), dtype=bool)
+    valid[joined.index] = True
+    return valid
 
 def generate_galleries(global_cities_path):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -74,15 +72,17 @@ def generate_galleries(global_cities_path):
     # We assume global_cities.csv exists and has LAT, LON, population
     print("\n--- Gallery 1: Raw GeoNames Density ---")
     df_raw = pd.read_csv(global_cities_path, low_memory=False)
-    # df_raw.to_csv("data/galleries/G1_raw.csv", index=False)
-    # build_index(model, device, df_raw['LAT'].values, df_raw['LON'].values, "data/galleries/G1_raw.faiss")
+    df_raw.to_csv("data/galleries/G1_raw.csv", index=False)
+    build_index(model, device, df_raw['LAT'].values, df_raw['LON'].values, "data/galleries/G1_raw.faiss")
     
     # 2. Population-weighted GeoNames
     print("\n--- Gallery 2: Population Weighted ---")
     # GeoNames has population. We can filter top N or use population to sample.
     # We will filter to keep only populated places > 1000 to drastically change distribution
     if 'population' in df_raw.columns:
-        df_pop = df_raw[df_raw['population'] > 1000]
+        # True population weighting: Sample proportional to population
+        df_raw['pop_weight'] = df_raw['population'].clip(lower=1)
+        df_pop = df_raw.sample(n=min(100000, len(df_raw)), weights='pop_weight', random_state=42, replace=True).drop_duplicates(subset=['LAT', 'LON'])
     else:
         # Mock population weight if column missing
         print("[WARNING] 'population' column missing, simulating pop-weight by dropping 50% random")

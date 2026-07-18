@@ -46,3 +46,6 @@ ehthumbs.db
 Thumbs.db
 data/im2gps3k/
 results/data/galleries/
+results/
+data/yfcc4k/
+geo-clip/
