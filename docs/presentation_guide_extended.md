@@ -39,7 +39,7 @@ for i in range(num_batches):
 
 #### Challenge 2: Model Geographic Bias 
 **The Problem:** The base model was heavily biased towards Western architectures, causing it to misclassify Iraqi landscapes as generic desert regions.
-**The Solution (Domain-Specific Indexing):** We built a strictly localized database (55,000 points within Iraq). At inference, we conditionally route the L2 distance search to the `iraq_index.faiss`. This mathematically forces the neural network to output the closest structural match exclusively within Iraqi borders.
+**The Experimental Solution (Domain-Specific Indexing):** We built a strictly localized database (55,000 points within Iraq). At inference, we conditionally route the L2 distance search to the `iraq_index.faiss`. While this mechanically constrains predictions to Iraqi borders, it acts as a forced geographic prior rather than a true improvement in the model's zero-shot visual understanding.
 
 ```python
 # Dynamic Index Routing based on UI input
@@ -52,7 +52,7 @@ else:
 
 #### Challenge 3: Text Blindness
 **The Problem:** Vision Transformers analyze patterns, but they cannot "read" explicit text like street signs.
-**The Solution (Multimodal OCR Fusion):** We integrated `EasyOCR` to read Arabic and English text from the image before inference, serving as a secondary multimodal evidence anchor for the user.
+**The Analysis (OCR as Display-Only):** We integrated `EasyOCR` to read Arabic and English text from the image. Scientifically, this text is presented strictly as a visual auxiliary cue for the end-user. It is explicitly not fused into the mathematical ranking mechanism, thereby maintaining the integrity of the visual-only baseline evaluation.
 
 #### Challenge 4: Ignored GPS Metadata 
 **The Problem:** Processing images that already contain precise Exif GPS metadata through a neural network wastes GPU compute resources.
@@ -82,11 +82,11 @@ else:
 
 #### التحدي الثاني: التحيز الجغرافي (Geographic Bias)
 **المشكلة:** النموذج يخطئ في المعالم العربية لأنه متحيز جغرافياً للبيئة الغربية.
-**الحل الهندسي:** قمنا بعزل البحث داخل فهرس محلي خاص بالعراق، مما يجبر الخوارزمية على إيجاد أقرب تطابق بصري حصراً داخل الحدود العراقية، ورفع الدقة بشكل هائل.
+**النتيجة البحثية:** قمنا بتجربة عزل البحث داخل فهرس محلي خاص بالعراق، مما يجبر الخوارزمية على إيجاد أقرب تطابق بصري حصراً داخل الحدود العراقية. يُعتبر هذا تدخلاً وتضييقاً لمساحة البحث (Geographic Prior) وليس تحسيناً حقيقياً لذكاء النموذج الأساسي.
 
 #### التحدي الثالث: العمى النصي في الصور
 **المشكلة:** شبكة الـ (ViT) تحلل الصور كأشكال ولا تستطيع قراءة لافتات الشوارع.
-**الحل الهندسي:** دمجنا نظام OCR ثنائي اللغة (EasyOCR) لقراءة النصوص في الصورة وعرضها كدليل مساعد قاطع.
+**التوثيق العلمي (Display-Only OCR):** لم نقم بدمج النصوص رياضياً في قرارات الشبكة العصبية للحفاظ على دقة التقييم البصري، وإنما اقتصر الأمر على استخراج النصوص وعرضها للمستخدم على الشاشة كدليل إضافي فقط (Display-Only).
 
 #### التحدي الرابع: البيانات الوصفية المهملة
 **المشكلة:** إهدار طاقة كارت الشاشة على صور تحتوي مسبقاً على إحداثيات GPS مخفية.

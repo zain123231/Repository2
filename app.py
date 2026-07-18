@@ -94,7 +94,9 @@ def get_predictions(image, use_iraq=False, top_k=3):
         
     engine = InferenceEngine(model, device, index, cities, ocr_reader)
     
-    # We use A4 variant (TTA + Micro-Grid + OCR) for the best results in the app
+    # We use A4 variant (TTA + Micro-Grid + OCR) in the UI to demonstrate all experimental features 
+    # (OCR + Refinement) for forensic exploration, acknowledging that the scientific A1 baseline 
+    # mathematically yields higher zero-shot accuracy.
     results = engine.predict(image, variant="A4", top_k=top_k)
     
     formatted_results = []
