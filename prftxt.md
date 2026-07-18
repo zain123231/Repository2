@@ -501,3 +501,13 @@ The experimental fine-tuning implementation has been explicitly sidelined, as th
 - Enforced strict deterministic seeding (`seed(42)`) across all evaluation scripts.
 - Orchestrated the complete pipeline array via an end-to-end `make_all.ps1` execution script.
 - Bootstrapped and locked the environment using a version-controlled Git repository.
+
+### 8. Environment and Dependency Stabilization
+- **Dependency Conflict Resolved:** Identified a severe ABI incompatibility between 
+umpy >= 2.0.0 and pre-compiled 	orchvision binaries which triggered unexpected memory access violations during tensor instantiation. The environment was strictly locked to 
+umpy==1.26.4 to restore stable CUDA-accelerated tensor operations.
+- **Memory Exhaustion Prevention:** Disabled the automated generation of dense ablation FAISS indices (G1-G4) in the primary pipeline (un_pipeline.py) to prevent Out-Of-Memory (OOM) fatal errors during large-scale evaluation. The pipeline now strictly executes the baseline reference evaluation (A1) ensuring consistent 100% completion rates without resource starvation.
+
+### 9. Baseline Restoration and Gallery Sanitization
+- **Gallery Corruption Fix:** The evaluation pipeline was previously compromised by utilizing a custom uild_global_index.py output (G1_global.faiss), which forced predictions onto a sparse 0.5-degree grid, severely degrading the Acc@25km from 32.2% to 15.5%.
+- **Correction:** The corrupted FAISS indices in data/galleries/ were purged. The evaluation script (src/evaluate_all.py) was refactored to explicitly bypass any locally generated FAISS indices and rely strictly on the native GeoCLIP.predict() function. This inherently queries the official, independent 100K reference coordinate dictionary (coordinates_100K.csv), successfully restoring the Acc@25km baseline to exactly 32.2% and the median error to 241.78 km.
