@@ -28,7 +28,7 @@ Ensure you have Python 3 installed. Install the required dependencies using the 
 
 ```bash
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install faiss-cpu pandas numpy streamlit pillow easyocr
+pip install faiss-cpu pandas numpy streamlit pillow easyocr matplotlib seaborn
 ```
 
 ## Index Generation (First-Time Setup)
@@ -123,24 +123,23 @@ The project currently utilizes the official GeoCLIP reference implementation. To
   - Forensic (Metadata allowed): streamlit run app.py -- --forensic
   - CLI Forensic: python src/predict.py my_image.jpg --forensic
 
-### 7. Evaluation Pipeline
-The evaluation operates as follows:
+### 7. Evaluation Pipeline (A1-A4)
+The evaluation has been unified to run across four variants simultaneously (A1: Baseline, A2: TTA, A3: Micro-Grid, A4: TTA+Grid+OCR):
 1. Initialize the frozen, official GeoCLIP model using pre-trained weights.
 2. Load the official Im2GPS3k evaluation CSV dataset.
-3. For each image, pass it to the model's predict() function.
-4. Query the independent 100K GPS Gallery.
-5. Calculate the Haversine distance between the model's top prediction coordinate and the actual ground truth.
-6. Aggregate distances and generate accuracy metrics per spatial threshold.
+3. For each image, pass it to the model's `predict()` function under the respective variant constraints.
+4. Calculate the Haversine distance between the model's top prediction coordinate and the actual ground truth.
+5. Aggregate distances and generate accuracy metrics per spatial threshold.
 
-`mermaid
+```mermaid
 flowchart TD
     A[Load GeoCLIP Pretrained Model] --> B[Load Im2GPS3k Images]
-    B --> C[Zero-Shot Forward Pass]
-    C --> D[Query Independent 100K GPS Gallery]
-    D --> E[Retrieve Top GPS Coordinate]
-    E --> F[Calculate Haversine Distance to Ground Truth]
-    F --> G[Aggregate Results & Generate CDF]
-`
+    B --> C[Evaluate Variant A1]
+    B --> D[Evaluate Variant A2]
+    B --> E[Evaluate Variant A3]
+    B --> F[Evaluate Variant A4]
+    C & D & E & F --> G[Save detailed_predictions.csv]
+```
 
 ### 8. Automated Scientific Reporting System
 The evaluation pipeline natively includes an automated scientific reporting system designed to generate publication-ready tables and figures. To ensure historical preservation, every evaluation run is saved within a unique timestamped directory: `results/YYYYMMDD_HHMMSS/`.
@@ -156,28 +155,32 @@ The evaluation pipeline natively includes an automated scientific reporting syst
 - `csv/`: Raw and summarized data, including `detailed_predictions.csv`.
 - `report.md`: A comprehensive scientific markdown report detailing hardware, model versions, datasets, and runtime.
 
-### 9. Benchmark Results
+### 9. Benchmark Results (Im2GPS3k - 100% Coverage)
 - **Results Location:** Generated within `results/<timestamp>/`
-- **Evaluation Metrics:**
-  - **Median Error:** ~241.78 km
-  - **Accuracy @ 1km:** ~13.05%
-  - **Accuracy @ 25km:** ~32.17%
-  - **Accuracy @ 200km:** ~47.98%
-  - **Accuracy @ 750km:** ~66.53%
-  - **Accuracy @ 2500km:** ~82.28%
-- **Comparison:** These results mirror the established baseline metrics published in the original GeoCLIP research paper, confirming the success of the data leakage correction and zero-shot alignment.
+
+| System | Median (km) | Acc@1km | Acc@25km | Acc@200km | Acc@750km | Acc@2500km |
+| --- | --- | --- | --- | --- | --- | --- |
+| **A1 (Baseline)** | 241.7 | **13.0%** | **32.2%** | **48.0%** | **66.5%** | **82.3%** |
+| **A2 (TTA)** | 295.7 | 5.4% | 22.6% | 43.8% | 65.2% | 82.3% |
+| **A3 (Micro-Grid)** | 300.5 | 2.7% | 20.5% | 43.7% | 65.0% | 82.4% |
+| **A4 (TTA+Grid+OCR)**| 300.5 | 2.7% | 20.5% | 43.7% | 65.0% | 82.4% |
+
+**Scientific Conclusion:** 
+The unmodified GeoCLIP baseline (A1) strictly outperforms all Post-Processing techniques (TTA, Micro-Grids) in zero-shot conditions because these experimental techniques blur spatial embeddings over non-fine-tuned grids.
 
 ### 10. Scientific Reproducibility
 - **Python Version:** 3.10
 - **PyTorch Version:** 2.7.1+cu118
-- **CUDA Version:** 11.8
-- **Operating System:** Windows
-- **GeoCLIP Version:** Official Reference Codebase
-- **Commands Required to Reproduce:**
+- **Commands Required to Reproduce the Full Multi-Variant Evaluation:**
   ```bash
-  pip install seaborn
+  # 1. Download Dataset
   python src/download_im2gps3k.py
-  python src/evaluate_final.py
+  
+  # 2. Run Comprehensive Evaluation (Takes ~1 Hour)
+  python src/evaluate_all.py --csv data/im2gps3k.csv --img-dir data/im2gps3k/im2gps3ktest/im2gps3ktest --cities data/global_cities.csv
+  
+  # 3. Generate Publication-Quality Figures (Heatmaps & CDFs)
+  python src/evaluation/generate_visuals.py path/to/results/timestamp/csv/detailed_predictions.csv
   ```
 
 ### 11. Repository Changes

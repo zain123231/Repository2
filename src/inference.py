@@ -184,7 +184,8 @@ class InferenceEngine:
                         })
                         
                     else: # argmax
-                        probs = F.softmax(similarity, dim=-1)
+                        sim_scaled = similarity / temperature
+                        probs = F.softmax(sim_scaled, dim=-1)
                         best_local_idx = similarity.argmax().item()
                         best_local_score = similarity[0, best_local_idx].item()
                         best_local_prob = probs[0, best_local_idx].item()
