@@ -9,6 +9,10 @@ from torchvision import transforms
 import easyocr
 import sys
 
+# Windows Encoding Fix for Emojis
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding='utf-8')
+
 # Configure page layout and icon
 st.set_page_config(page_title="AI Geo-Locator (Unified System)", page_icon="🌍", layout="wide")
 
@@ -275,7 +279,7 @@ def main():
     use_iraq = False
     if iraq_idx is not None:
         st.sidebar.markdown("---")
-        use_iraq = st.sidebar.checkbox("🇮🇶 Use Iraq-Only Database", value=True, help="Force the AI to only search within Iraqi borders.")
+        use_iraq = st.sidebar.checkbox("🇮🇶 Use Iraq-Only Database", value=False, help="Force the AI to only search within Iraqi borders.")
         
     # Two-column layout
     col1, col2 = st.columns([1, 1.2], gap="large")
