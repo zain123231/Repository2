@@ -23,6 +23,12 @@ The Geo-Locator is an advanced artificial intelligence system built upon the Geo
 - **Image Processing & OCR:** PIL (Pillow), Torchvision, EasyOCR
 - **Frontend UI:** Streamlit
 
+## Windows Requirements
+If you are running on Windows, you must ensure your terminal supports UTF-8 to display geographical emojis and characters correctly. You can set the environment variable before running scripts:
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+```
+
 ## Installation
 Ensure you have Python 3 installed. Install the required dependencies using the following commands:
 
@@ -31,22 +37,21 @@ pip install torch torchvision torchaudio --index-url https://download.pytorch.or
 pip install faiss-cpu pandas numpy streamlit pillow easyocr matplotlib seaborn
 ```
 
-## Index Generation (First-Time Setup)
-Before running the application, you must generate the geospatial vector indices. The script has been optimized for memory efficiency (on-the-fly batch processing) to prevent `std::bad_alloc` errors during K-Means training.
+## Usage (The Three Build Steps)
 
-**Build the Global Database (5.1 Million points / 4096 cells):**
+To run the project from scratch, follow these three steps sequentially:
+
+### Step 1: Build the Global Database
 ```bash
 python src/build_global_index.py
 ```
 
-**Build the Regional Database (Iraq):**
+### Step 2: Build the Regional Database (Iraq)
 ```bash
 python src/build_iraq_index.py
 ```
 
-## Usage
-
-### Web Interface
+### Step 3: Launch the Web Interface
 To launch the Streamlit web application:
 ```bash
 streamlit run app.py

@@ -39,8 +39,8 @@ def mock_engine():
     return InferenceEngine(model=model, device=device, index=index, cities_df=cities_df)
 
 def test_inference_baseline(mock_engine):
-    # Create a dummy image
-    image = Image.new('RGB', (224, 224), color='white')
+    # Load a mock image from tests/fixtures
+    image = Image.open('tests/fixtures/mock/mock_ref_1.jpg').convert('RGB')
     
     # Run prediction for A1
     results = mock_engine.predict(image, variant="A1", top_k=3)
@@ -51,7 +51,8 @@ def test_inference_baseline(mock_engine):
     assert "score" in results[0]
 
 def test_inference_microgrid(mock_engine):
-    image = Image.new('RGB', (224, 224), color='white')
+    # Load a mock image from tests/fixtures
+    image = Image.open('tests/fixtures/mock/mock_ref_1.jpg').convert('RGB')
     
     # Run prediction for A3 (Micro-Grid)
     # The mock model's location_encoder will be called
